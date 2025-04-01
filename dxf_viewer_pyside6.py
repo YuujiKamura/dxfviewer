@@ -149,25 +149,46 @@ def check_single_instance():
         # 現在のプロセスID
         current_pid = os.getpid()
         app_name = os.path.basename(sys.argv[0])
+        logger.debug(f"シングルインスタンスチェック: 現在のPID={current_pid}, アプリ名={app_name}")
         
         # 再起動フラグがある場合は常に起動を許可
         if args.restart:
             logger.debug("再起動フラグが指定されているため、シングルインスタンスチェックをスキップします")
             return True
         
+        # 実行中の自分以外のPythonプロセスをカウント
+        running_instances = 0
+        
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 # 自分以外のPythonプロセスをチェック
                 if proc.info['pid'] != current_pid and proc.info['name'] == 'python':
-                    cmdline = proc.info['cmdline']
-                    if cmdline and app_name in str(cmdline):
-                        logger.warning(f"既に他のインスタンスが実行中です (PID: {proc.info['pid']})")
-                        return False  # 既に起動中
-            except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError):
+                    cmdline = proc.info['cmdline'] if 'cmdline' in proc.info else []
+                    
+                    # コマンドラインにアプリ名が含まれるか確認
+                    is_same_app = False
+                    if cmdline:
+                        for cmd in cmdline:
+                            if app_name in cmd:
+                                is_same_app = True
+                                break
+                    
+                    if is_same_app:
+                        running_instances += 1
+                        logger.debug(f"検出: PID={proc.info['pid']}, コマンド={cmdline}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError) as e:
+                logger.debug(f"プロセス検査例外: {str(e)}")
                 continue
-                
-        return True  # 起動していない
         
+        logger.debug(f"検出された他のインスタンス数: {running_instances}")
+        
+        # 実行中のインスタンスがない場合は起動を許可
+        if running_instances == 0:
+            return True
+        else:
+            logger.warning(f"既に他のインスタンスが実行中です (検出数: {running_instances})")
+            return False
+                
     except Exception as e:
         # エラーが発生した場合でも起動を許可
         logger.warning(f"シングルインスタンスチェック中にエラーが発生: {str(e)}")
