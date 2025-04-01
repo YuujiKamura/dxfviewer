@@ -643,11 +643,11 @@ class DXFGraphicsView(QGraphicsView):
                            f"m21={transform.m21():.3f}, m22={transform.m22():.3f}, "
                            f"dx={transform.dx():.3f}, dy={transform.dy():.3f}")
             
-            # ビューの変換行列を直接操作してモデルを移動（パン）
-            # translate関数ではなく、変換行列を直接操作
+            # QTransformを取得し、直接変換行列の平行移動成分を更新
             transform = self.transform()
-            transform.translate(delta.x(), delta.y())
-            self.setTransform(transform)
+            new_transform = QTransform(transform)
+            new_transform.translate(delta.x() / transform.m11(), delta.y() / transform.m22())
+            self.setTransform(new_transform)
             
             # 変換後の情報をログに出力
             if self.parent() and hasattr(self.parent(), 'debug_mode') and self.parent().debug_mode:
