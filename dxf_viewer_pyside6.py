@@ -632,8 +632,27 @@ class DXFGraphicsView(QGraphicsView):
             # 現在のマウス位置と前回位置の差分を計算
             current_pos = event.position()
             delta = current_pos - self.last_mouse_pos
+            
+            # デバッグ情報を詳細に出力
+            if self.parent() and hasattr(self.parent(), 'debug_mode') and self.parent().debug_mode:
+                logger.debug(f"移動追跡: 現在位置=({current_pos.x():.2f}, {current_pos.y():.2f}), "
+                           f"前回位置=({self.last_mouse_pos.x():.2f}, {self.last_mouse_pos.y():.2f}), "
+                           f"差分=({delta.x():.2f}, {delta.y():.2f})")
+                transform = self.transform()
+                logger.debug(f"変換行列: m11={transform.m11():.3f}, m12={transform.m12():.3f}, "
+                           f"m21={transform.m21():.3f}, m22={transform.m22():.3f}, "
+                           f"dx={transform.dx():.3f}, dy={transform.dy():.3f}")
+            
             # ビューの変換行列を直接操作してモデルを移動（パン）
             self.translate(delta.x(), delta.y())
+            
+            # 変換後の情報をログに出力
+            if self.parent() and hasattr(self.parent(), 'debug_mode') and self.parent().debug_mode:
+                transform = self.transform()
+                logger.debug(f"変換後: m11={transform.m11():.3f}, m12={transform.m12():.3f}, "
+                           f"m21={transform.m21():.3f}, m22={transform.m22():.3f}, "
+                           f"dx={transform.dx():.3f}, dy={transform.dy():.3f}")
+            
             # 現在位置を更新
             self.last_mouse_pos = current_pos
             # カーソルを手のアイコンに（視覚的フィードバック）
