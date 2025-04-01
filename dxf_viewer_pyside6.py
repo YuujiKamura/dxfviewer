@@ -631,21 +631,20 @@ class DXFGraphicsView(QGraphicsView):
         if Qt.MouseButton.LeftButton & event.buttons():
             # 現在のマウス位置と前回位置の差分を計算
             delta = event.position() - self.last_mouse_pos
-            # ビューポートのスクロールバーを移動
-            hBar = self.horizontalScrollBar()
-            vBar = self.verticalScrollBar()
-            hBar.setValue(hBar.value() - int(delta.x()))
-            vBar.setValue(vBar.value() - int(delta.y()))
+            # ビューの変換行列を直接操作してモデルを移動（パン）
+            self.translate(delta.x(), delta.y())
             # 現在位置を更新
             self.last_mouse_pos = event.position()
+            # カーソルを手のアイコンに（視覚的フィードバック）
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
         
         # マウス位置を取得して座標を表示
         pos = self.mapToScene(event.position().toPoint())
         if self.parent() and hasattr(self.parent(), 'update_status_bar'):
             self.parent().update_status_bar(pos.x(), -pos.y())
         
-        # 親クラスの処理を呼び出す（ドラッグが正しく機能するなら不要かも）
-        super().mouseMoveEvent(event)
+        # CAD操作は自前処理で完結するので親クラスは呼ばない
+        # super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event):
         """マウスボタンが離された時のイベント処理"""
