@@ -644,7 +644,10 @@ class DXFGraphicsView(QGraphicsView):
                            f"dx={transform.dx():.3f}, dy={transform.dy():.3f}")
             
             # ビューの変換行列を直接操作してモデルを移動（パン）
-            self.translate(delta.x(), delta.y())
+            # translate関数ではなく、変換行列を直接操作
+            transform = self.transform()
+            transform.translate(delta.x(), delta.y())
+            self.setTransform(transform)
             
             # 変換後の情報をログに出力
             if self.parent() and hasattr(self.parent(), 'debug_mode') and self.parent().debug_mode:
