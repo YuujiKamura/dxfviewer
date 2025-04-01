@@ -58,7 +58,7 @@ except ImportError as e:
 # 基本設定
 APP_NAME = "DXF Viewer (PySide6版)"
 APP_VERSION = "1.0"
-DEFAULT_LINE_WIDTH = 12.0
+DEFAULT_LINE_WIDTH = 20.0
 DEFAULT_LINE_WIDTH_MIN = 1.0
 DEFAULT_LINE_WIDTH_MAX = 20.0
 
@@ -69,11 +69,13 @@ lock_file = "dxf_viewer.lock"
 
 # 設定の保存と読み込み用のクラス
 class AppSettings:
+    """アプリケーション設定を管理するクラス"""
+    
     def __init__(self):
         self.settings = QSettings("DXFViewer", "PySide6")
         # 強制線幅モードの追加
         self.force_linewidth = True
-        self.force_linewidth_value = 20.0
+        self.force_linewidth_value = 20.0  # この値をDEFAULT_LINE_WIDTHの値と合わせる
     
     def save_line_width(self, width):
         self.settings.setValue("line_width", width)
@@ -81,6 +83,7 @@ class AppSettings:
     def load_line_width(self):
         # 強制線幅モードが有効な場合は常に固定値を返す
         if self.force_linewidth:
+            logger.info(f"線幅設定をリセットしました。デフォルト値 {self.force_linewidth_value} を使用します。")
             return self.force_linewidth_value
         # デフォルト値はDEFAULT_LINE_WIDTH
         return self.settings.value("line_width", DEFAULT_LINE_WIDTH, type=float)
@@ -154,9 +157,42 @@ logger = setup_logger(args.debug)
 
 # シングルインスタンス管理（一時的に無効化）
 def check_single_instance():
-    """他のインスタンスが実行中かチェック（一時的に無効化）"""
-    # 常にTrueを返して起動を許可
-    return True
+    """
+    アプリケーションの重複起動をチェック
+    すでに実行中なら警告してTrueを返す
+    """
+    # 常に実行を許可する（シングルインスタンス検出を無効化）
+    return False
+    
+    # 以下の元の実装はコメントアウト
+    """
+    # ロックファイルのパス
+    lock_file = os.path.join(tempfile.gettempdir(), 'dxf_viewer.lock')
+    
+    try:
+        # ロックファイルが存在するか確認
+        if os.path.exists(lock_file):
+            with open(lock_file, 'r') as f:
+                pid = int(f.read().strip())
+            
+            # プロセスが実行中か確認
+            if psutil.pid_exists(pid):
+                logger.warning(f"既に他のインスタンスが実行中です。終了します。")
+                return True
+            else:
+                # ロックファイルが存在するがプロセスは実行されていない場合、ロックファイルを削除
+                os.remove(lock_file)
+        
+        # 新しいロックファイルを作成
+        with open(lock_file, 'w') as f:
+            f.write(str(os.getpid()))
+        
+        return False
+    except Exception as e:
+        # エラーが発生した場合は、安全のため重複起動とみなさない
+        logger.error(f"シングルインスタンス検出中にエラー: {e}")
+        return False
+    """
 
 # DXF情報関連の純粋関数
 def get_dxf_version_info(doc):
@@ -984,63 +1020,47 @@ class DXFViewer(QMainWindow):
             self.statusBar.showMessage(f"ファイル {os.path.basename(self.current_file)} を再読み込みしました", 3000)  # 3秒間表示
     
     def restart_application(self):
-        """アプリケーションを手動で再起動するメソッド
-        このメソッドは自動再起動機能が無効化された後も使用できます。
-        """
-        # 既に再起動処理中なら無視
-        if hasattr(self, 'restarting') and self.restarting:
-            return
-            
-        script_path = os.path.abspath(__file__)
-        logger.info(f"アプリケーションを手動で再起動します: {script_path}")
-        self.restarting = True
-        
-        # 現在のコマンドライン引数を取得
-        current_args = []
-        if self.debug_mode:
-            current_args.append('--debug')
-        if self.current_file:
-            current_args.extend(['--file', str(self.current_file)])
-        
-        # 再起動フラグと親PIDを追加
-        current_args.extend(['--restart', '--parent-pid', str(os.getpid())])
-        
-        # 新しいプロセスを起動するコマンドを構築
-        cmd = [sys.executable, script_path] + current_args
-        logger.info(f"再起動コマンド: {' '.join(cmd)}")
-        
-        try:
-            # 新しいプロセスを起動
-            if os.name == 'nt':  # Windows
-                # プロセスを分離して起動
-                CREATE_NO_WINDOW = 0x08000000
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                subprocess.Popen(
-                    cmd,
-                    creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-                    close_fds=True
-                )
-            else:  # Linux/Mac
-                # デタッチして起動
-                subprocess.Popen(
-                    cmd,
-                    start_new_session=True,
-                    close_fds=True
-                )
-            
-            logger.info("新しいプロセスを起動しました。このプロセスは終了します。")
-            
-            # 現在のプロセスを終了（遅延させて通知を表示する時間を確保）
-            QTimer.singleShot(1000, lambda: sys.exit(0))
-        except Exception as e:
-            error_details = traceback.format_exc()
-            logger.error(f"再起動に失敗しました: {str(e)}\n{error_details}")
-            self.restarting = False
-            QMessageBox.critical(
-                self,
-                "再起動エラー",
-                f"アプリケーションの再起動に失敗しました。\n手動で再起動してください。\nエラー: {str(e)}"
-            )
+        """アプリケーションを再起動"""
+        # 再起動機能を無効化
+        logger.info("再起動機能は現在無効化されています。")
+        return
+    
+    # 以下の元の実装はコメントアウト
+    """
+    # 現在のファイルパスを取得
+    current_file_path = self.current_file if self.current_file else ""
+    
+    # 現在の実行ファイル
+    script_path = os.path.abspath(__file__)
+    logger.info(f"アプリケーションを手動で再起動します: {script_path}")
+    
+    # Python実行ファイルのパス
+    python_exe = sys.executable
+    
+    # 再起動コマンドを構築
+    restart_cmd = [python_exe, script_path]
+    
+    # ファイルが開かれていれば、そのパスを引数に追加
+    if current_file_path:
+        restart_cmd.extend(["--file", current_file_path])
+    
+    # 再起動フラグと親プロセスIDを追加
+    restart_cmd.extend(["--restart", "--parent-pid", str(os.getpid())])
+    
+    # デバッグモードが有効なら引数に追加
+    if self.debug_mode:
+        restart_cmd.append("--debug")
+    
+    # コマンドをログに記録
+    logger.info(f"再起動コマンド: {' '.join(restart_cmd)}")
+    
+    # 新しいプロセスを起動
+    subprocess.Popen(restart_cmd)
+    logger.info("新しいプロセスを起動しました。このプロセスは終了します。")
+    
+    # 現在のプロセスを終了
+    self.app.quit()
+    """
 
 # アプリケーションの起動処理
 if __name__ == '__main__':
