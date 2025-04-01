@@ -688,11 +688,6 @@ class DXFViewer(QMainWindow):
         self.reset_button.setEnabled(False)
         toolbar_layout.addWidget(self.reset_button)
         
-        # サンプル作成ボタン
-        self.sample_button = QPushButton('サンプル作成')
-        self.sample_button.clicked.connect(self.create_sample)
-        toolbar_layout.addWidget(self.sample_button)
-        
         # 再読み込みボタン
         self.reload_button = QPushButton('再読み込み')
         self.reload_button.clicked.connect(self.reload_current_file)
@@ -801,41 +796,6 @@ class DXFViewer(QMainWindow):
             # 情報ダイアログを表示
             QMessageBox.information(self, "DXFファイル情報", info_text)
     
-    def create_sample(self):
-        # サンプルDXFファイルを作成
-        options = QFileDialog.Options()
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "サンプルDXFファイルを保存", "", "DXF Files (*.dxf)", options=options
-        )
-        
-        if not filename:
-            return
-        
-        logger.info(f"サンプルDXFファイルの作成を開始: {filename}")
-            
-        # 純粋関数を使用してサンプルファイルを作成
-        result, error = create_sample_dxf(filename)
-        
-        if result:
-            logger.info(f"サンプルDXFファイルの作成に成功: {result}")
-            QMessageBox.information(self, "完了", f"サンプルDXFファイルを保存しました: {result}")
-            
-            # 保存したファイルを開く
-            self.load_dxf(result)
-            self.current_file = result
-            self.file_label.setText(f'ファイル: {os.path.basename(result)}')
-            self.reset_button.setEnabled(True)
-            self.info_button.setEnabled(True)
-        else:
-            err_msg, err_details = error
-            logger.error(f"サンプルDXFファイルの作成に失敗: {err_msg}\n{err_details}")
-            
-            error_message = f"サンプルDXFファイルの作成に失敗しました: {err_msg}"
-            if self.debug_mode:
-                error_message += f"\n\n詳細エラー情報:\n{err_details}"
-                
-            QMessageBox.critical(self, "エラー", error_message)
-        
     def open_file(self):
         options = QFileDialog.Options()
         filename, _ = QFileDialog.getOpenFileName(
