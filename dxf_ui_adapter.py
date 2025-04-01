@@ -33,11 +33,16 @@ class DXFSceneAdapter:
         RGB値からQColorオブジェクトに変換
         
         Args:
-            rgb: (R, G, B)の3要素タプル
+            rgb: (R, G, B)の3要素タプル、またはQColorオブジェクト
             
         Returns:
             QColor: 変換されたQColorオブジェクト
         """
+        # 既にQColorの場合はそのまま返す
+        if isinstance(rgb, QColor):
+            return rgb
+        
+        # タプルの場合は変換
         return QColor(rgb[0], rgb[1], rgb[2])
     
     def draw_line(self, line_data: pdf.LineData) -> QGraphicsItem:

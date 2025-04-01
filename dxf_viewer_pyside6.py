@@ -11,6 +11,7 @@ import traceback
 import json
 import tempfile
 import uuid
+import psutil
 from datetime import datetime
 from pathlib import Path
 
@@ -141,100 +142,36 @@ def parse_arguments():
 args = parse_arguments()
 logger = setup_logger(args.debug)
 
-# シングルインスタンス管理
-lock_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dxf_viewer.lock")
-instance_id = str(uuid.uuid4())
-
+# シングルインスタンス管理（psutilを使用）
 def check_single_instance():
-    """他のインスタンスが実行中かチェック"""
+    """他のインスタンスが実行中かチェック（psutilを使用）"""
     try:
-        # ロックファイルが存在するか確認
-        if os.path.exists(lock_file):
-            try:
-                # ロックファイルが存在する場合、内容を読み取り、他のインスタンスのIDを取得
-                with open(lock_file, 'r') as f:
-                    content = f.read().strip().split(':')
-                    if len(content) == 2:
-                        other_id, pid_str = content
-                        try:
-                            pid = int(pid_str)
-                            # Windowsの場合
-                            if os.name == 'nt':
-                                # プロセスの存在確認（エラーが発生しなければ存在する）
-                                try:
-                                    subprocess.check_output(f'tasklist /FI "PID eq {pid}" /NH', shell=True)
-                                    # このプロセスがrestartフラグで起動された場合は、親プロセスの終了を待つ
-                                    if args.restart and args.parent_pid:
-                                        logger.info(f"親プロセス (PID: {args.parent_pid}) の終了を待機しています...")
-                                        wait_start = time.time()
-                                        while time.time() - wait_start < 5:  # 最大5秒待機
-                                            try:
-                                                subprocess.check_output(f'tasklist /FI "PID eq {args.parent_pid}" /NH', shell=True)
-                                                time.sleep(0.5)
-                                            except:
-                                                logger.info("親プロセスが終了しました")
-                                                break
-                                    # 既存のプロセスが実行中（再起動ではない場合）
-                                    if not args.restart:
-                                        return False
-                                except:
-                                    # プロセスが存在しない場合はロックファイルを削除
-                                    pass
-                            # Linux/Macの場合
-                            else:
-                                try:
-                                    os.kill(pid, 0)  # シグナル0でプロセスの存在を確認
-                                    # 既存のプロセスが実行中（再起動ではない場合）
-                                    if not args.restart:
-                                        return False
-                                except OSError:
-                                    # プロセスが存在しない場合はロックファイルを削除
-                                    pass
-                        except:
-                            pass  # PIDの変換エラーなど
-            except:
-                pass  # ファイル読み取りエラー
-            
-            # 既存のロックファイルを削除（無効なロックファイル）
-            try:
-                os.remove(lock_file)
-                logger.debug("無効なロックファイルを削除しました")
-            except:
-                logger.warning("無効なロックファイルの削除に失敗しました")
+        # 現在のプロセスID
+        current_pid = os.getpid()
+        app_name = os.path.basename(sys.argv[0])
         
-        # ロックファイルがないか無効な場合、新しいロックファイルを作成
-        try:
-            with open(lock_file, 'w') as f:
-                f.write(f"{instance_id}:{os.getpid()}")
+        # 再起動フラグがある場合は常に起動を許可
+        if args.restart:
+            logger.debug("再起動フラグが指定されているため、シングルインスタンスチェックをスキップします")
             return True
-        except Exception as e:
-            logger.error(f"ロックファイルの作成に失敗しました: {str(e)}")
-            # ロックファイル作成失敗時も続行（シングルインスタンス保証はできないが、機能は使える）
-            return True
-    except Exception as e:
-        # エラーが発生した場合は、念のため続行
-        logger.warning(f"シングルインスタンスチェック中にエラーが発生しました: {str(e)}")
-        return True
-
-def cleanup_lock_file():
-    """ロックファイルを削除"""
-    try:
-        if os.path.exists(lock_file):
+        
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                with open(lock_file, 'r') as f:
-                    content = f.read().strip().split(':')
-                    if len(content) >= 1 and content[0] == instance_id:
-                        os.remove(lock_file)
-                        logger.debug("ロックファイルを削除しました")
-            except Exception as e:
-                # 読み取りエラーの場合も削除を試みる
-                try:
-                    os.remove(lock_file)
-                    logger.debug("ロックファイルを削除しました（読み取りエラー後）")
-                except:
-                    logger.warning("ロックファイル削除中にエラーが発生しました", exc_info=True)
-    except:
-        logger.warning("ロックファイル削除中にエラーが発生しました", exc_info=True)
+                # 自分以外のPythonプロセスをチェック
+                if proc.info['pid'] != current_pid and proc.info['name'] == 'python':
+                    cmdline = proc.info['cmdline']
+                    if cmdline and app_name in str(cmdline):
+                        logger.warning(f"既に他のインスタンスが実行中です (PID: {proc.info['pid']})")
+                        return False  # 既に起動中
+            except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError):
+                continue
+                
+        return True  # 起動していない
+        
+    except Exception as e:
+        # エラーが発生した場合でも起動を許可
+        logger.warning(f"シングルインスタンスチェック中にエラーが発生: {str(e)}")
+        return True
 
 # DXF情報関連の純粋関数
 def get_dxf_version_info(doc):
@@ -1153,7 +1090,6 @@ class DXFViewer(QMainWindow):
     def closeEvent(self, event):
         """アプリケーション終了時の処理"""
         logger.info("DXFViewerアプリケーションを終了します")
-        cleanup_lock_file()
         super().closeEvent(event)
     
     def show_line_width_dialog(self):
@@ -1198,9 +1134,6 @@ class DXFViewer(QMainWindow):
         logger.info(f"再起動コマンド: {' '.join(cmd)}")
         
         try:
-            # ロックファイルのクリーンアップを先に行う
-            cleanup_lock_file()
-            
             # 新しいプロセスを起動
             if os.name == 'nt':  # Windows
                 # プロセスを分離して起動
@@ -1248,7 +1181,7 @@ if __name__ == '__main__':
     
     try:
         # シングルインスタンスチェック
-        if check_single_instance() or args.restart:
+        if check_single_instance():
             # アプリケーション初期化
             app = QApplication(sys.argv)
             app_settings = AppSettings()
@@ -1278,15 +1211,6 @@ if __name__ == '__main__':
         if 'QApplication' in globals():
             QMessageBox.critical(None, "エラー", f"予期せぬエラーが発生しました:\n{str(e)}")
         sys.exit(1)
-    finally:
-        # クリーンアップ
-        if 'logger' in globals() and logger is not None:
-            logger.info("DXFViewerアプリケーションを終了します")
-        try:
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-        except Exception as e:
-            print(f"ロックファイル削除中にエラーが発生しました: {str(e)}")
 
 # 線幅設定ダイアログ
 class LineWidthDialog(QDialog):
