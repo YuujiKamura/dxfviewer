@@ -1066,62 +1066,50 @@ class DXFViewer(QMainWindow):
         entity_count = 0
         error_count = 0
         
-        # デバッグモードを一時的に有効にして詳細ログを出力
-        temp_debug = self.debug_mode
-        self.debug_mode = True
-        
         # 現在の線幅設定を取得
         line_width = self.app_settings.load_line_width()
         logger.debug(f"現在の線幅設定: {line_width}")
         
-        # 各エンティティを描画
+        # DXF UIアダプターを作成
+        from dxf_ui_adapter import DXFSceneAdapter
+        adapter = DXFSceneAdapter(self.dxf_view.scene())
+        
+        # 各エンティティを処理
         for entity in entities:
             entity_count += 1
             
-            # エンティティ情報をログに出力
-            if hasattr(entity, 'dxftype'):
-                logger.debug(f"エンティティ [{entity_count}]: タイプ={entity.dxftype()}")
-            
-            # エンティティの線幅設定を確認
-            if hasattr(entity.dxf, 'lineweight'):
-                logger.debug(f"  線幅設定: {entity.dxf.lineweight}")
-            
-            # エンティティのレイヤー情報を確認
-            if hasattr(entity.dxf, 'layer'):
-                layer_name = entity.dxf.layer
-                layer = self.current_doc.layers.get(layer_name)
-                if layer and hasattr(layer.dxf, 'lineweight'):
-                    logger.debug(f"  レイヤー: {layer_name}, 線幅: {layer.dxf.lineweight}")
-            
-            # 純粋関数を使用してエンティティを処理
-            result, error = process_dxf_entity(self.dxf_view.scene(), entity, self.dxf_view.line_color, self.app_settings)
-            
-            if error:
-                err_msg, err_details, entity_type = error
-                error_count += 1
-                logger.error(f"エンティティ描画エラー (タイプ: {entity_type}): {err_msg}\n{err_details}")
+            # エンティティ情報をログに出力（デバッグモードの場合）
+            if self.debug_mode:
+                if hasattr(entity, 'dxftype'):
+                    logger.debug(f"エンティティ [{entity_count}]: タイプ={entity.dxftype()}")
                 
-                # デバッグモードの場合はエラーメッセージを表示
-                if self.debug_mode and error_count <= 5:  # 最初の5つのエラーだけを表示
-                    QMessageBox.warning(
-                        self, 
-                        "エンティティ描画エラー", 
-                        f"エンティティ (タイプ: {entity_type}) の描画中にエラーが発生しました:\n{err_msg}"
-                    )
+                # エンティティの線幅設定を確認
+                if hasattr(entity.dxf, 'lineweight'):
+                    logger.debug(f"  線幅設定: {entity.dxf.lineweight}")
+                
+                # エンティティのレイヤー情報を確認
+                if hasattr(entity.dxf, 'layer'):
+                    layer_name = entity.dxf.layer
+                    layer = self.current_doc.layers.get(layer_name)
+                    if layer and hasattr(layer.dxf, 'lineweight'):
+                        logger.debug(f"  レイヤー: {layer_name}, 線幅: {layer.dxf.lineweight}")
+            
+            # 純粋関数を使用してエンティティのデータを処理
+            import pure_dxf_functions as pdf
+            result = pdf.process_entity_data(entity, self.dxf_view.line_color, line_width)
+            
+            # 処理結果を描画
+            if result.success:
+                adapter.draw_entity_result(result)
             else:
-                logger.debug(result)
-        
-        # 一時的なデバッグモードを元に戻す
-        self.debug_mode = temp_debug
+                error_count += 1
+                if self.debug_mode:
+                    logger.warning(f"エンティティ [{entity_count}] 処理エラー: {result.error}")
         
         logger.info(f"DXFファイル読み込み完了: エンティティ総数={entity_count}, エラー数={error_count}")
         
-        if error_count > 0:
-            QMessageBox.warning(
-                self, 
-                "描画警告", 
-                f"{error_count}個のエンティティの描画中にエラーが発生しました。\n詳細はログファイルを確認してください。"
-            )
+        # デバッグモードを元に戻す
+        self.dxf_view.update()  # シーンを更新
     
     def reset_view(self):
         self.dxf_view.reset_view()

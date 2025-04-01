@@ -285,7 +285,7 @@ def compute_text_data(text, pos, height, color=(255, 255, 255), entity=None) -> 
 # DXFエンティティ処理関数
 def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0) -> Result:
     """
-    DXFエンティティからデータを抽出する純粋関数
+    DXFエンティティを処理してデータ構造を生成する純粋関数
     
     Args:
         entity: DXFエンティティ
@@ -293,33 +293,40 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
         default_width: デフォルト線幅
         
     Returns:
-        Result: 処理結果（成功/失敗と関連データ）
+        Result: 処理結果
     """
     try:
-        entity_type = entity.dxftype()
+        # エンティティがNoneの場合はエラー
+        if entity is None:
+            return Result(False, None, "エンティティがNoneです")
         
+        # エンティティタイプの取得
+        entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else '不明'
+        
+        # エンティティタイプに応じて処理
         if entity_type == 'LINE':
             start = (entity.dxf.start.x, entity.dxf.start.y)
             end = (entity.dxf.end.x, entity.dxf.end.y)
-            data = compute_line_data(start, end, default_color, entity, default_width)
-            return Result(success=True, data=data)
+            line_data = compute_line_data(start, end, default_color, entity, default_width)
+            return Result(True, line_data)
             
         elif entity_type == 'CIRCLE':
             center = (entity.dxf.center.x, entity.dxf.center.y)
             radius = entity.dxf.radius
-            data = compute_circle_data(center, radius, default_color, entity, default_width)
-            return Result(success=True, data=data)
+            circle_data = compute_circle_data(center, radius, default_color, entity, default_width)
+            return Result(True, circle_data)
             
         elif entity_type == 'ARC':
             center = (entity.dxf.center.x, entity.dxf.center.y)
             radius = entity.dxf.radius
             start_angle = entity.dxf.start_angle
             end_angle = entity.dxf.end_angle
-            data = compute_arc_data(center, radius, start_angle, end_angle, default_color, entity, default_width)
-            return Result(success=True, data=data)
+            arc_data = compute_arc_data(center, radius, start_angle, end_angle, default_color, entity, default_width)
+            return Result(True, arc_data)
             
         elif entity_type == 'POLYLINE' or entity_type == 'LWPOLYLINE':
             # ポリラインの頂点を取得
+            points = []
             if entity_type == 'LWPOLYLINE':
                 # LWポリラインは直接座標を持っている
                 points = [(point[0], point[1]) for point in entity.get_points()]
@@ -327,39 +334,43 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
                 # 通常のポリラインは頂点オブジェクトを持っている
                 points = [(vertex.dxf.location.x, vertex.dxf.location.y) for vertex in entity.vertices]
             
-            data = compute_polyline_data(points, default_color, entity, default_width)
-            return Result(success=True, data=data)
+            polyline_data = compute_polyline_data(points, default_color, entity, default_width)
+            return Result(True, polyline_data)
             
         elif entity_type == 'TEXT' or entity_type == 'MTEXT':
-            # テキストの処理
+            # テキストの位置を取得
             if entity_type == 'TEXT':
+                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
                 text = entity.dxf.text
-                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
                 height = entity.dxf.height
+                # テキスト配置の取得
+                h_align = getattr(entity.dxf, 'halign', 0)
+                v_align = getattr(entity.dxf, 'valign', 0)
+                rotation = getattr(entity.dxf, 'rotation', 0)
             else:  # MTEXT
-                text = entity.text
                 pos = (entity.dxf.insert.x, entity.dxf.insert.y)
+                text = entity.text
                 height = entity.dxf.char_height
+                # MTEXTの配置はデフォルト値を使用
+                h_align = getattr(entity.dxf, 'attachment_point', 1) % 3  # 左/中央/右
+                v_align = getattr(entity.dxf, 'attachment_point', 1) // 3  # 上/中央/下
+                rotation = getattr(entity.dxf, 'rotation', 0)
             
-            data = compute_text_data(text, pos, height, default_color, entity)
-            return Result(success=True, data=data)
+            text_data = compute_text_data(text, pos, height, default_color, entity)
+            # 水平垂直配置と回転を設定
+            text_data.h_align = h_align
+            text_data.v_align = v_align
+            text_data.rotation = rotation
+            return Result(True, text_data)
             
         else:
-            # 未対応のエンティティタイプ
-            return Result(
-                success=False, 
-                error=f"未対応のエンティティタイプ", 
-                details=f"エンティティタイプ: {entity_type}"
-            )
-        
+            # サポートされていないエンティティタイプ
+            return Result(False, None, f"サポートされていないエンティティタイプです: {entity_type}")
+    
     except Exception as e:
+        # エラーが発生した場合、詳細情報を返す
         error_details = traceback.format_exc()
-        entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else "不明"
-        return Result(
-            success=False, 
-            error=f"エンティティの処理中にエラーが発生: {str(e)}", 
-            details=error_details
-        )
+        return Result(False, None, f"エンティティ処理中にエラーが発生: {str(e)}", error_details)
 
 # テーマ色の取得関数
 def get_theme_colors(theme_name):

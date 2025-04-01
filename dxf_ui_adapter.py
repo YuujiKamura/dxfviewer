@@ -256,41 +256,30 @@ class DXFSceneAdapter:
             color: 適用する色 (R, G, B)
         """
         qcolor = self.rgb_to_qcolor(color)
-        
         for item in self.scene.items():
-            if isinstance(item, (QGraphicsItem)):
-                # テキストの場合
-                if hasattr(item, 'setDefaultTextColor'):
-                    item.setDefaultTextColor(qcolor)
-                # パスや線の場合
-                elif hasattr(item, 'setPen'):
-                    pen = item.pen()
-                    pen.setColor(qcolor)
-                    item.setPen(pen)
-
-# UI側で利用するための関数
-def process_dxf_entity_for_ui(scene: QGraphicsScene, entity, color: Tuple[int, int, int], default_width: float=1.0) -> Tuple[bool, str]:
+            if hasattr(item, 'pen'):
+                # ペンがあるアイテムは線の色を変更
+                pen = item.pen()
+                pen.setColor(qcolor)
+                item.setPen(pen)
+            elif hasattr(item, 'setBrush') and hasattr(item, 'brush'):
+                # ブラシがあるアイテムは塗りつぶし色を変更
+                brush = item.brush()
+                brush.setColor(qcolor)
+                item.setBrush(brush)
+            elif hasattr(item, 'setDefaultTextColor'):
+                # テキストアイテムはテキスト色を変更
+                item.setDefaultTextColor(qcolor)
+                
+# インターフェースの簡略化
+def create_dxf_adapter(scene: QGraphicsScene) -> DXFSceneAdapter:
     """
-    DXFエンティティを処理してUIに描画する関数
+    DXFSceneAdapterのインスタンスを作成する補助関数
     
     Args:
         scene: 描画先のグラフィックスシーン
-        entity: DXFエンティティ
-        color: 描画色 (R, G, B)
-        default_width: デフォルト線幅
         
     Returns:
-        Tuple[bool, str]: (成功したか, メッセージ)
+        DXFSceneAdapter: 新しいアダプターインスタンス
     """
-    # エンティティからデータを抽出
-    result = pdf.process_entity_data(entity, color, default_width)
-    
-    # アダプターを使ってデータをシーンに描画
-    adapter = DXFSceneAdapter(scene)
-    graphics_item = adapter.draw_entity_result(result)
-    
-    # 結果を返す
-    if result.success and graphics_item is not None:
-        return True, f"エンティティ {entity.dxftype() if hasattr(entity, 'dxftype') else '不明'} を描画しました"
-    else:
-        return False, result.error or "エンティティの描画に失敗しました" 
+    return DXFSceneAdapter(scene) 
