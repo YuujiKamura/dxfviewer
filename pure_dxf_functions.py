@@ -7,9 +7,13 @@
 """
 
 import traceback
+import logging
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional, Any, Union
 import math
+
+# ロガーの設定
+logger = logging.getLogger("dxf_viewer")
 
 # 戻り値の型を定義するデータクラス
 @dataclass
@@ -260,16 +264,25 @@ def compute_text_data(text, pos, height, color=(255, 255, 255), entity=None) -> 
     h_align = 0  # デフォルト: 左揃え
     if entity and hasattr(entity.dxf, 'halign'):
         h_align = entity.dxf.halign
+        if logger:
+            logger.debug(f"  エンティティから取得した水平揃え (halign): {h_align}")
     
     # 垂直方向の配置
     v_align = 0  # デフォルト: ベースライン
     if entity and hasattr(entity.dxf, 'valign'):
         v_align = entity.dxf.valign
+        if logger:
+            logger.debug(f"  エンティティから取得した垂直揃え (valign): {v_align}")
     
     # 回転
     rotation = 0
     if entity and hasattr(entity.dxf, 'rotation'):
         rotation = entity.dxf.rotation
+    
+    # エンティティタイプの確認（デバッグ用）
+    if entity and logger:
+        entity_type = entity.dxftype()
+        logger.debug(f"  テキストデータ計算: タイプ={entity_type}, テキスト='{text}', h_align={h_align}, v_align={v_align}")
     
     return TextData(
         text=text,
@@ -347,14 +360,28 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
                 h_align = getattr(entity.dxf, 'halign', 0)
                 v_align = getattr(entity.dxf, 'valign', 0)
                 rotation = getattr(entity.dxf, 'rotation', 0)
+                if logger:
+                    logger.debug(f"  TEXT エンティティ: pos=({pos[0]}, {pos[1]}), text='{text}', h_align={h_align}")
             else:  # MTEXT
                 pos = (entity.dxf.insert.x, entity.dxf.insert.y)
                 text = entity.text
                 height = entity.dxf.char_height
-                # MTEXTの配置はデフォルト値を使用
-                h_align = getattr(entity.dxf, 'attachment_point', 1) % 3  # 左/中央/右
-                v_align = getattr(entity.dxf, 'attachment_point', 1) // 3  # 上/中央/下
+                # MTEXTの配置はattachment_pointから計算
+                attachment_point = getattr(entity.dxf, 'attachment_point', 1)
+                h_align_raw = attachment_point % 3  # 0=左, 1=中央, 2=右
+                v_align = attachment_point // 3  # 0=上, 1=中央, 2=下
+                
+                # MTEXTの中央揃え(1)をTEXTの中央揃え(4)に変換
+                if h_align_raw == 1:  # 中央揃え
+                    h_align = 4  # TEXTの中央揃え値に合わせる
+                elif h_align_raw == 2:  # 右揃え
+                    h_align = 2  # 右揃えは同じ値
+                else:  # 左揃え
+                    h_align = 0  # 左揃えは同じ値
+                
                 rotation = getattr(entity.dxf, 'rotation', 0)
+                if logger:
+                    logger.debug(f"  MTEXT エンティティ: pos=({pos[0]}, {pos[1]}), text='{text}', attachment_point={attachment_point}, h_align_raw={h_align_raw}, h_align={h_align}, v_align={v_align}")
             
             text_data = compute_text_data(text, pos, height, default_color, entity)
             # 水平垂直配置と回転を設定

@@ -174,6 +174,10 @@ class DXFSceneAdapter:
         width = text_item.boundingRect().width()
         height = text_item.boundingRect().height()
         
+        # デバッグログ - 処理前の値
+        if pdf.logger:
+            pdf.logger.debug(f"テキスト '{text_data.text}' の配置処理前: h_align={text_data.h_align}, pos=({text_data.pos_x}, {text_data.pos_y}), 幅={width}, 高さ={height}")
+        
         # 基本位置（デフォルトは左下揃え）
         base_x = text_data.pos_x
         base_y = -text_data.pos_y - height
@@ -183,8 +187,10 @@ class DXFSceneAdapter:
             pass
         elif text_data.h_align == 2:  # 右揃え
             base_x -= width
-        elif text_data.h_align == 4:  # 中央揃え
+        elif text_data.h_align == 4 or text_data.h_align == 1:  # 中央揃え (TEXTは4、MTEXTは1を使用することがある)
             base_x -= width/2
+            if pdf.logger:
+                pdf.logger.debug(f"  中央揃え適用: h_align={text_data.h_align}, base_x = {text_data.pos_x} - {width}/2 = {base_x}")
         
         # 垂直方向の配置
         if text_data.v_align == 0:  # ベースライン
@@ -198,6 +204,10 @@ class DXFSceneAdapter:
         
         text_item.setPos(base_x, base_y)
         
+        # デバッグログ - 処理後の値
+        if pdf.logger:
+            pdf.logger.debug(f"テキスト '{text_data.text}' の配置処理後: 位置=({base_x}, {base_y})")
+        
         # 回転の適用
         if text_data.rotation:
             # 回転の中心点を設定
@@ -205,7 +215,7 @@ class DXFSceneAdapter:
                 text_item.setTransformOriginPoint(0, height)
             elif text_data.h_align == 2:  # 右揃え
                 text_item.setTransformOriginPoint(width, height)
-            elif text_data.h_align == 4:  # 中央揃え
+            elif text_data.h_align == 4 or text_data.h_align == 1:  # 中央揃え (TEXTは4、MTEXTは1を使用することがある)
                 text_item.setTransformOriginPoint(width/2, height/2)
             else:
                 text_item.setTransformOriginPoint(0, height)
