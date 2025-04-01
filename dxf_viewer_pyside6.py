@@ -75,7 +75,7 @@ class AppSettings:
         self.settings = QSettings("DXFViewer", "PySide6")
         # 強制線幅モードを無効化し、線幅倍率を導入
         self.force_linewidth = False
-        self.linewidth_scale = 1.5  # 線幅の表示倍率
+        self.linewidth_scale = 3.0  # 線幅の表示倍率を1.5から3.0に変更
     
     def load_line_width(self):
         # DXFの本来の線幅を使用し、表示用の倍率を適用
