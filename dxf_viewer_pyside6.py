@@ -1077,28 +1077,28 @@ if __name__ == '__main__':
     
     try:
         # シングルインスタンスチェック
-        if check_single_instance():
-            # アプリケーション初期化
-            app = QApplication(sys.argv)
-            app_settings = AppSettings()
-            
-            # 線幅設定をリセットしてデフォルト値を使用
-            app_settings.reset_line_width()
-            logger.info(f"線幅設定をリセットしました。デフォルト値 {DEFAULT_LINE_WIDTH} を使用します。")
-            
-            viewer = DXFViewer(app_settings)
-            viewer.show()
-            
-            # ファイルが指定されていれば開く
-            if hasattr(args, 'file') and args.file:
-                viewer.load_and_display_dxf(args.file)
-            
-            # 実行開始
-            logger.info("アプリケーションの実行を開始します")
-            sys.exit(app.exec())
-        else:
-            logger.warning("既に他のインスタンスが実行中です。終了します。")
-            sys.exit(0)
+        # if check_single_instance():
+        #     sys.exit(1)
+        
+        # グローバルアプリケーションインスタンスの作成
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")  # Fusionスタイルを使用（プラットフォーム間で一貫した外観）
+        
+        # 線幅設定をリセットしてデフォルト値を使用
+        app_settings = AppSettings()
+        app_settings.reset_line_width()
+        logger.info(f"線幅設定をリセットしました。デフォルト値 {DEFAULT_LINE_WIDTH} を使用します。")
+        
+        viewer = DXFViewer(app_settings)
+        viewer.show()
+        
+        # ファイルが指定されていれば開く
+        if hasattr(args, 'file') and args.file:
+            viewer.load_and_display_dxf(args.file)
+        
+        # 実行開始
+        logger.info("アプリケーションの実行を開始します")
+        sys.exit(app.exec())
     except Exception as e:
         print(f"予期せぬエラーが発生しました: {str(e)}")
         traceback.print_exc()
