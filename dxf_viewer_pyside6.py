@@ -223,46 +223,27 @@ def create_dxf_info_html(doc):
 # DXF描画関連の純粋関数
 def get_entity_lineweight(entity, app_settings, default_width=None):
     """エンティティの線幅を取得（純粋関数）"""
-    # テスト用に常に大きな線幅を返す
-    return 20.0
-
-    # 以下の元の実装はコメントアウト
-    """
+    # テスト用コードを削除し、本来のロジックを有効化
     if default_width is None:
         default_width = app_settings.load_line_width()
     
-    # デバッグ用に入力値を記録
-    if 'logger' in globals() and logger is not None:
-        logger.debug(f"線幅取得開始 - デフォルト値: {default_width}")
-    
-    # lineweight属性がある場合はそれを使用
-    if hasattr(entity.dxf, 'lineweight'):
-        lw = entity.dxf.lineweight
-        if 'logger' in globals() and logger is not None:
-            logger.debug(f"エンティティ線幅設定: {lw}")
-        
-        if lw > 0:  # 正の値の場合は直接その値を使用（100分の1 mm単位）
-            # DXFの線幅（100分の1 mm）をQt用に変換し、最小値を設定
-            result = max(lw / 10.0, DEFAULT_LINE_WIDTH_MIN)
-            if 'logger' in globals() and logger is not None:
-                logger.debug(f"計算された線幅: {result} (元の値: {lw}/10)")
-            return result
-        elif lw == -3:  # BYLAYER
-            # レイヤーの線幅を取得
-            if hasattr(entity, 'dxf') and hasattr(entity.dxf, 'layer'):
+    # pure_dxf_functionsモジュールをインポート（存在しない場合は直接ロジックを使用）
+    try:
+        import pure_dxf_functions as pdf
+        return pdf.calculate_lineweight(entity, default_width)
+    except ImportError:
+        # 直接ロジックを実装（pure_dxf_functionsが利用できない場合）
+        if hasattr(entity.dxf, 'lineweight'):
+            lw = entity.dxf.lineweight
+            if lw > 0:
+                return max(lw / 10.0, DEFAULT_LINE_WIDTH_MIN)
+            elif lw == -3 and hasattr(entity.dxf, 'layer'):
                 layer_name = entity.dxf.layer
-                layer = entity.doc.layers.get(layer_name)
-                if layer and hasattr(layer.dxf, 'lineweight') and layer.dxf.lineweight > 0:
-                    result = max(layer.dxf.lineweight / 10.0, DEFAULT_LINE_WIDTH_MIN)
-                    if 'logger' in globals() and logger is not None:
-                        logger.debug(f"レイヤー線幅適用: {result} (レイヤー: {layer_name}, 値: {layer.dxf.lineweight}/10)")
-                    return result
-    
-    # 情報が取得できない場合はデフォルト値を返す
-    if 'logger' in globals() and logger is not None:
-        logger.debug(f"デフォルト線幅使用: {default_width}")
-    return default_width
-    """
+                if hasattr(entity, 'doc') and entity.doc:
+                    layer = entity.doc.layers.get(layer_name)
+                    if layer and hasattr(layer.dxf, 'lineweight') and layer.dxf.lineweight > 0:
+                        return max(layer.dxf.lineweight / 10.0, DEFAULT_LINE_WIDTH_MIN)
+        return default_width
 
 def create_line(scene, start, end, color, entity=None, app_settings=None):
     # 線幅の取得（エンティティが提供されている場合）
@@ -486,46 +467,14 @@ def create_text(scene, text, pos, height, color, entity=None):
 
 # サンプルDXF作成関数
 def create_sample_dxf(filename):
-    if not filename:
-        return None, "ファイル名が指定されていません"
-    
-    if not filename.lower().endswith('.dxf'):
-        filename += '.dxf'
-    
+    """サンプルDXFファイルを作成（純粋関数に委譲）"""
     try:
-        with r12writer(filename) as dxf:
-            # 線幅テスト用の平行線を描画（異なる線幅で比較できるように）
-            for i in range(5):
-                y = 150 + i * 20
-                dxf.add_line((10, y), (190, y))
-                dxf.add_text(f"線幅テスト {i+1}", (200, y), height=7)
-            
-            # 線を描画
-            dxf.add_line((0, 0), (100, 0))
-            dxf.add_line((100, 0), (100, 100))
-            dxf.add_line((100, 100), (0, 100))
-            dxf.add_line((0, 100), (0, 0))
-            
-            # 円を描画
-            dxf.add_circle((50, 50), 40)
-            
-            # テキストを追加
-            dxf.add_text("サンプルDXF", (10, 110), height=10)
-            
-            # 対角線を描画
-            dxf.add_line((0, 0), (100, 100))
-            dxf.add_line((0, 100), (100, 0))
-            
-            # 多角形（ポリライン）を描画
-            points = [(150, 10), (170, 20), (190, 40), (180, 60), (150, 50)]
-            dxf.add_polyline(points, close=True)
-            
-        logger.info(f"サンプルDXFファイルを作成しました: {filename}")
-        return filename, None
-        
-    except Exception as e:
-        error_details = traceback.format_exc()
-        return None, (str(e), error_details)
+        # pure_dxf_functionsモジュールをインポート
+        import pure_dxf_functions as pdf
+        return pdf.create_sample_dxf(filename)
+    except ImportError:
+        # モジュールがインポートできない場合はエラーを返す
+        return None, "pure_dxf_functions モジュールをインポートできません"
 
 # DXFファイル読み込み関数
 def load_dxf_file(filename):
@@ -540,60 +489,73 @@ def load_dxf_file(filename):
 def process_dxf_entity(scene, entity, line_color, app_settings=None):
     """DXFエンティティを処理して描画アイテムを作成"""
     try:
-        entity_type = entity.dxftype()
-        entity_result = f"エンティティ {entity_type} を処理"
+        # dxf_ui_adapterを使用してエンティティを処理
+        from dxf_ui_adapter import DXFSceneAdapter
         
-        if entity_type == 'LINE':
-            start = (entity.dxf.start.x, entity.dxf.start.y)
-            end = (entity.dxf.end.x, entity.dxf.end.y)
-            create_line(scene, start, end, line_color, entity, app_settings)
+        adapter = DXFSceneAdapter(scene)
+        item, result_message = adapter.process_dxf_entity(entity, line_color)
+        
+        if item is None:
+            return None, (result_message, traceback.format_exc(), entity.dxftype() if hasattr(entity, 'dxftype') else "不明")
+        
+        return result_message, None
+    except ImportError:
+        # dxf_ui_adapterが使用できない場合は、既存のコードを実行
+        try:
+            entity_type = entity.dxftype()
+            entity_result = f"エンティティ {entity_type} を処理"
             
-        elif entity_type == 'CIRCLE':
-            center = (entity.dxf.center.x, entity.dxf.center.y)
-            radius = entity.dxf.radius
-            create_circle(scene, center, radius, line_color, entity, app_settings)
-            
-        elif entity_type == 'ARC':
-            center = (entity.dxf.center.x, entity.dxf.center.y)
-            radius = entity.dxf.radius
-            start_angle = entity.dxf.start_angle
-            end_angle = entity.dxf.end_angle
-            create_arc(scene, center, radius, start_angle, end_angle, line_color, entity, app_settings)
-            
-        elif entity_type == 'POLYLINE' or entity_type == 'LWPOLYLINE':
-            # ポリラインの頂点を取得
-            if entity_type == 'LWPOLYLINE':
-                # LWポリラインは直接座標を持っている
-                points = [(point[0], point[1]) for point in entity.get_points()]
+            if entity_type == 'LINE':
+                start = (entity.dxf.start.x, entity.dxf.start.y)
+                end = (entity.dxf.end.x, entity.dxf.end.y)
+                create_line(scene, start, end, line_color, entity, app_settings)
+                
+            elif entity_type == 'CIRCLE':
+                center = (entity.dxf.center.x, entity.dxf.center.y)
+                radius = entity.dxf.radius
+                create_circle(scene, center, radius, line_color, entity, app_settings)
+                
+            elif entity_type == 'ARC':
+                center = (entity.dxf.center.x, entity.dxf.center.y)
+                radius = entity.dxf.radius
+                start_angle = entity.dxf.start_angle
+                end_angle = entity.dxf.end_angle
+                create_arc(scene, center, radius, start_angle, end_angle, line_color, entity, app_settings)
+                
+            elif entity_type == 'POLYLINE' or entity_type == 'LWPOLYLINE':
+                # ポリラインの頂点を取得
+                if entity_type == 'LWPOLYLINE':
+                    # LWポリラインは直接座標を持っている
+                    points = [(point[0], point[1]) for point in entity.get_points()]
+                else:
+                    # 通常のポリラインは頂点オブジェクトを持っている
+                    points = [(vertex.dxf.location.x, vertex.dxf.location.y) for vertex in entity.vertices]
+                
+                create_polyline(scene, points, line_color, entity, app_settings)
+                
+            elif entity_type == 'TEXT' or entity_type == 'MTEXT':
+                # テキストの処理
+                if entity_type == 'TEXT':
+                    text = entity.dxf.text
+                    pos = (entity.dxf.insert.x, entity.dxf.insert.y)
+                    height = entity.dxf.height
+                else:  # MTEXT
+                    text = entity.text
+                    pos = (entity.dxf.insert.x, entity.dxf.insert.y)
+                    height = entity.dxf.char_height
+                
+                create_text(scene, text, pos, height, line_color, entity)
+                
             else:
-                # 通常のポリラインは頂点オブジェクトを持っている
-                points = [(vertex.dxf.location.x, vertex.dxf.location.y) for vertex in entity.vertices]
+                # 未対応のエンティティタイプ
+                entity_result = f"未対応のエンティティタイプ: {entity_type}"
             
-            create_polyline(scene, points, line_color, entity, app_settings)
-            
-        elif entity_type == 'TEXT' or entity_type == 'MTEXT':
-            # テキストの処理
-            if entity_type == 'TEXT':
-                text = entity.dxf.text
-                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
-                height = entity.dxf.height
-            else:  # MTEXT
-                text = entity.text
-                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
-                height = entity.dxf.char_height
-            
-            create_text(scene, text, pos, height, line_color, entity)
-            
-        else:
-            # 未対応のエンティティタイプ
-            entity_result = f"未対応のエンティティタイプ: {entity_type}"
-        
-        return entity_result, None
-        
-    except Exception as e:
-        error_details = traceback.format_exc()
-        entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else "不明"
-        return None, (f"エンティティの処理中にエラーが発生: {str(e)}", error_details, entity_type)
+            return entity_result, None
+                
+        except Exception as e:
+            error_details = traceback.format_exc()
+            entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else "不明"
+            return None, (f"エンティティの処理中にエラーが発生: {str(e)}", error_details, entity_type)
 
 # DXFビュークラス
 class DXFGraphicsView(QGraphicsView):
@@ -602,9 +564,17 @@ class DXFGraphicsView(QGraphicsView):
         self.scene_ = QGraphicsScene()
         self.setScene(self.scene_)
         
-        # 固定の背景色と線の色を設定
-        self.background_color = QColor(255, 255, 255)  # 白背景
-        self.line_color = QColor(0, 0, 0)  # 黒い線
+        # テーマ関連の拡張
+        self.themes = {
+            "ライト": {"background": QColor(255, 255, 255), "foreground": QColor(0, 0, 0)},
+            "ダーク": {"background": QColor(40, 40, 40), "foreground": QColor(220, 220, 220)},
+            "ブルー": {"background": QColor(235, 245, 255), "foreground": QColor(0, 50, 100)}
+        }
+        self.current_theme = "ライト"
+        
+        # 固定の背景色と線の色を設定（初期設定）
+        self.background_color = self.themes[self.current_theme]["background"]
+        self.line_color = self.themes[self.current_theme]["foreground"]
         
         # 初期化
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -621,6 +591,13 @@ class DXFGraphicsView(QGraphicsView):
         self.current_zoom = 1.0
         self.min_zoom = 0.1
         self.max_zoom = 50.0
+        
+        # アダプターの初期化（dxf_ui_adapterが使用可能な場合）
+        try:
+            from dxf_ui_adapter import DXFSceneAdapter
+            self.adapter = DXFSceneAdapter(self.scene_)
+        except ImportError:
+            self.adapter = None
         
         # マウス座標
         self.last_mouse_pos = QPointF(0, 0)
@@ -655,16 +632,39 @@ class DXFGraphicsView(QGraphicsView):
         logger.debug("ビューがリセットされました")
     
     def apply_theme(self, theme_name):
-        """テーマを適用（互換性のために残し、固定色に設定）"""
-        # 固定テーマ
-        self.background_color = QColor(255, 255, 255)  # 白背景
-        self.line_color = QColor(0, 0, 0)  # 黒線
+        """テーマを適用"""
+        if theme_name not in self.themes:
+            theme_name = "ライト"
+        
+        self.current_theme = theme_name
+        theme = self.themes[theme_name]
+        
+        # 色の取得
+        self.background_color = theme["background"]
+        self.line_color = theme["foreground"]
+        
+        # 背景色を設定
         self.setBackgroundBrush(QBrush(self.background_color))
+        
+        # すべてのアイテムの色を更新
+        if hasattr(self, 'adapter') and self.adapter:
+            self.adapter.apply_color_to_all_items(
+                (self.line_color.red(), self.line_color.green(), self.line_color.blue())
+            )
+        else:
+            # アダプターがない場合は直接アイテムの色を変更
+            for item in self.scene_.items():
+                if hasattr(item, 'pen'):
+                    pen = item.pen()
+                    pen.setColor(self.line_color)
+                    item.setPen(pen)
+                elif hasattr(item, 'setDefaultTextColor'):
+                    item.setDefaultTextColor(self.line_color)
         
         # シーン更新
         self.scene().update()
         
-        logger.debug(f"固定テーマを適用しました（白背景、黒線）")
+        logger.debug(f"テーマを適用しました: {theme_name}")
 
 class DXFViewer(QMainWindow):
     def __init__(self, app_settings):

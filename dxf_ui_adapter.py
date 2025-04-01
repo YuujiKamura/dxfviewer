@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Any, Optional
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
 from PySide6.QtCore import QPointF, QRectF, QLineF, Qt
+import traceback
 
 # 純粋関数モジュールをインポート
 import pure_dxf_functions as pdf
@@ -290,6 +291,37 @@ class DXFSceneAdapter:
                 # テキストアイテムはテキスト色を変更
                 item.setDefaultTextColor(qcolor)
                 
+    def process_dxf_entity(self, entity, color):
+        """
+        DXFエンティティを処理して描画アイテムを作成
+        
+        Args:
+            entity: DXFエンティティ
+            color: 描画色
+            
+        Returns:
+            Tuple[QGraphicsItem, str]: 作成されたアイテムと処理結果メッセージ
+        """
+        try:
+            entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else '不明'
+            entity_result = f"エンティティ {entity_type} を処理"
+            
+            # 純粋関数を使用してエンティティを処理
+            result = pdf.process_entity_data(entity, color)
+            
+            # 結果をシーンに描画
+            item = self.draw_entity_result(result)
+            
+            if not result.success:
+                return None, result.error or f"エンティティ {entity_type} の処理に失敗しました"
+            
+            return item, entity_result
+            
+        except Exception as e:
+            error_details = traceback.format_exc()
+            entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else "不明"
+            return None, f"エンティティの処理中にエラーが発生: {str(e)}"
+
 # インターフェースの簡略化
 def create_dxf_adapter(scene: QGraphicsScene) -> DXFSceneAdapter:
     """

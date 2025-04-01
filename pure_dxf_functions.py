@@ -60,6 +60,9 @@ class TextData:
     v_align: int  # 0=ベース, 1=下, 2=中央, 3=上
     rotation: float
     color: Tuple[int, int, int]
+    align_point: Optional[Tuple[float, float]] = None  # 配置点
+    transform_origin_x: float = 0  # 回転中心X座標
+    transform_origin_y: float = 0  # 回転中心Y座標
 
 @dataclass
 class Result:
@@ -69,42 +72,39 @@ class Result:
     details: str = None
 
 # 線幅計算関数
-def calculate_lineweight(entity, default_width=1.0, min_width=0.1) -> float:
-    """
-    エンティティの線幅を計算する純粋関数
+def calculate_lineweight(entity, default_width=1.0):
+    """エンティティの線幅を計算する関数
     
     Args:
         entity: DXFエンティティ
         default_width: デフォルト線幅
-        min_width: 最小線幅
-    
+        
     Returns:
         float: 計算された線幅
     """
+    # エンティティが None の場合はデフォルト値を返す
     if entity is None:
         return default_width
-        
-    try:
-        # エンティティに直接lineweight属性がある場合
-        if hasattr(entity.dxf, 'lineweight'):
-            lw = entity.dxf.lineweight
-            if lw > 0:
-                return max(lw / 10.0, min_width)
-            elif lw == -1:  # DEFAULT
-                return default_width
-            elif lw == -2:  # BYBLOCK
-                return default_width
-            elif lw == -3:  # BYLAYER
-                # レイヤーの線幅を取得
-                if hasattr(entity, 'dxf') and hasattr(entity.dxf, 'layer'):
-                    layer_name = entity.dxf.layer
-                    layer = entity.doc.layers.get(layer_name)
-                    if layer and hasattr(layer.dxf, 'lineweight') and layer.dxf.lineweight > 0:
-                        return max(layer.dxf.lineweight / 10.0, min_width)
-    except Exception:
-        pass
     
-    # 情報が取得できない場合はデフォルト値を返す
+    # DXFタイプを取得（ログ用）
+    entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else '不明'
+    
+    # lineweight属性がある場合はそれを使用
+    if hasattr(entity.dxf, 'lineweight'):
+        lw = entity.dxf.lineweight
+        
+        if lw > 0:  # 正の値の場合は直接その値を使用（100分の1 mm単位）
+            # DXFの線幅（100分の1 mm）をピクセル単位に変換
+            return max(lw / 10.0, 0.1)
+            
+        elif lw == -3:  # BYLAYER
+            # レイヤーの線幅を取得
+            if hasattr(entity.dxf, 'layer') and hasattr(entity, 'doc') and entity.doc:
+                layer = entity.doc.layers.get(entity.dxf.layer)
+                if layer and hasattr(layer.dxf, 'lineweight') and layer.dxf.lineweight > 0:
+                    return max(layer.dxf.lineweight / 10.0, 0.1)
+    
+    # 上記の条件に合致しない場合はデフォルト値を返す
     return default_width
 
 # 色変換関数
@@ -246,43 +246,67 @@ def compute_polyline_data(points, color=(255, 255, 255), entity=None, default_wi
     )
 
 # テキスト描画データ計算関数
-def compute_text_data(text, pos, height, color=(255, 255, 255), entity=None) -> TextData:
+def compute_text_data(entity, color=(255, 255, 255), default_height=5.0) -> TextData:
     """
     テキストの描画データを計算する純粋関数
     
     Args:
-        text: テキスト内容
-        pos: 挿入位置 (x, y)
-        height: テキスト高さ
+        entity: DXFテキストエンティティ
         color: 色 (R, G, B)
-        entity: DXFエンティティ
+        default_height: デフォルトテキスト高さ
         
     Returns:
         TextData: テキストの描画データ
     """
-    # 水平方向の配置
+    # テキスト内容と位置の取得
+    if entity.dxftype() == 'TEXT':
+        text = entity.dxf.text
+        pos = (entity.dxf.insert.x, entity.dxf.insert.y)
+        height = entity.dxf.height if hasattr(entity.dxf, 'height') else default_height
+    else:  # MTEXT
+        text = entity.text
+        pos = (entity.dxf.insert.x, entity.dxf.insert.y)
+        height = entity.dxf.char_height if hasattr(entity.dxf, 'char_height') else default_height
+
+    # 水平方向の配置（halign）
     h_align = 0  # デフォルト: 左揃え
-    if entity and hasattr(entity.dxf, 'halign'):
+    if hasattr(entity.dxf, 'halign'):
         h_align = entity.dxf.halign
-        if logger:
-            logger.debug(f"  エンティティから取得した水平揃え (halign): {h_align}")
+    elif entity.dxftype() == 'MTEXT' and hasattr(entity.dxf, 'attachment_point'):
+        # MTEXTの場合はattachment_pointから水平揃えを計算
+        attachment_point = entity.dxf.attachment_point
+        h_align_raw = attachment_point % 3  # 0=左, 1=中央, 2=右
+        
+        # MTEXTの中央揃え(1)をTEXTの中央揃え(4)に変換
+        if h_align_raw == 1:  # 中央揃え
+            h_align = 4
+        elif h_align_raw == 2:  # 右揃え
+            h_align = 2
+        else:  # 左揃え
+            h_align = 0
     
-    # 垂直方向の配置
+    # 垂直方向の配置（valign）
     v_align = 0  # デフォルト: ベースライン
-    if entity and hasattr(entity.dxf, 'valign'):
+    if hasattr(entity.dxf, 'valign'):
         v_align = entity.dxf.valign
-        if logger:
-            logger.debug(f"  エンティティから取得した垂直揃え (valign): {v_align}")
+    elif entity.dxftype() == 'MTEXT' and hasattr(entity.dxf, 'attachment_point'):
+        # MTEXTの場合はattachment_pointから垂直揃えを計算
+        attachment_point = entity.dxf.attachment_point
+        v_align = attachment_point // 3  # 0=上, 1=中央, 2=下
     
     # 回転
-    rotation = 0
-    if entity and hasattr(entity.dxf, 'rotation'):
-        rotation = entity.dxf.rotation
+    rotation = entity.dxf.rotation if hasattr(entity.dxf, 'rotation') else 0.0
     
-    # エンティティタイプの確認（デバッグ用）
-    if entity and logger:
-        entity_type = entity.dxftype()
-        logger.debug(f"  テキストデータ計算: タイプ={entity_type}, テキスト='{text}', h_align={h_align}, v_align={v_align}")
+    # align_pointの取得
+    align_point = None
+    if hasattr(entity.dxf, 'align_point') and entity.dxf.align_point:
+        align_point = (entity.dxf.align_point.x, entity.dxf.align_point.y)
+    
+    # デバッグログ
+    if logger:
+        logger.debug(f"テキストデータ計算: '{text}', 位置=({pos[0]}, {pos[1]}), h_align={h_align}, v_align={v_align}, 回転={rotation}")
+        if align_point:
+            logger.debug(f"  align_point: ({align_point[0]}, {align_point[1]})")
     
     return TextData(
         text=text,
@@ -290,9 +314,10 @@ def compute_text_data(text, pos, height, color=(255, 255, 255), entity=None) -> 
         pos_y=pos[1],
         height=height,
         h_align=h_align,
-        v_align=v_align,
+        v_align=v_align, 
         rotation=rotation,
-        color=color
+        color=color,
+        align_point=align_point
     )
 
 # DXFエンティティ処理関数
@@ -355,43 +380,7 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
             return Result(True, polyline_data)
             
         elif entity_type == 'TEXT' or entity_type == 'MTEXT':
-            # テキストの位置を取得
-            if entity_type == 'TEXT':
-                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
-                text = entity.dxf.text
-                height = entity.dxf.height
-                # テキスト配置の取得
-                h_align = getattr(entity.dxf, 'halign', 0)
-                v_align = getattr(entity.dxf, 'valign', 0)
-                rotation = getattr(entity.dxf, 'rotation', 0)
-                if logger:
-                    logger.debug(f"  TEXT エンティティ: pos=({pos[0]}, {pos[1]}), text='{text}', h_align={h_align}")
-            else:  # MTEXT
-                pos = (entity.dxf.insert.x, entity.dxf.insert.y)
-                text = entity.text
-                height = entity.dxf.char_height
-                # MTEXTの配置はattachment_pointから計算
-                attachment_point = getattr(entity.dxf, 'attachment_point', 1)
-                h_align_raw = attachment_point % 3  # 0=左, 1=中央, 2=右
-                v_align = attachment_point // 3  # 0=上, 1=中央, 2=下
-                
-                # MTEXTの中央揃え(1)をTEXTの中央揃え(4)に変換
-                if h_align_raw == 1:  # 中央揃え
-                    h_align = 4  # TEXTの中央揃え値に合わせる
-                elif h_align_raw == 2:  # 右揃え
-                    h_align = 2  # 右揃えは同じ値
-                else:  # 左揃え
-                    h_align = 0  # 左揃えは同じ値
-                
-                rotation = getattr(entity.dxf, 'rotation', 0)
-                if logger:
-                    logger.debug(f"  MTEXT エンティティ: pos=({pos[0]}, {pos[1]}), text='{text}', attachment_point={attachment_point}, h_align_raw={h_align_raw}, h_align={h_align}, v_align={v_align}")
-            
-            text_data = compute_text_data(text, pos, height, default_color, entity)
-            # 水平垂直配置と回転を設定
-            text_data.h_align = h_align
-            text_data.v_align = v_align
-            text_data.rotation = rotation
+            text_data = compute_text_data(entity, default_color)
             return Result(True, text_data)
             
         else:
@@ -436,24 +425,26 @@ def verify_identical_output(func, args1, args2) -> bool:
 
 # サンプルDXF作成関数
 def create_sample_dxf(filename):
-    """
-    サンプルDXFファイルを作成する純粋関数
-    同じファイル名に対して常に同じ結果を返します。
+    """サンプルDXFファイルを作成する純粋関数
     
     Args:
-        filename: 出力するDXFファイルのパス
+        filename: 作成するDXFファイルのパス
         
     Returns:
-        Tuple[str, Tuple[str, str]]: (成功した場合のファイル名, エラー情報のタプル)
+        Tuple[str, Any]: 成功した場合はファイル名とNone、失敗した場合はNoneとエラー情報
     """
     if not filename:
-        return None, ("ファイル名が指定されていません", "")
+        return None, "ファイル名が指定されていません"
     
     if not filename.lower().endswith('.dxf'):
         filename += '.dxf'
     
     try:
-        from ezdxf.r12writer import r12writer
+        # ezdxfからr12writerをインポート
+        try:
+            from ezdxf.r12writer import r12writer
+        except ImportError:
+            return None, "ezdxfモジュールをインポートできません。pip install ezdxfを実行してください。"
         
         with r12writer(filename) as dxf:
             # 線幅テスト用の平行線を描画（異なる線幅で比較できるように）
@@ -481,10 +472,14 @@ def create_sample_dxf(filename):
             # 多角形（ポリライン）を描画
             points = [(150, 10), (170, 20), (190, 40), (180, 60), (150, 50)]
             dxf.add_polyline(points, close=True)
-            
+        
+        if logger:
+            logger.info(f"サンプルDXFファイルを作成しました: {filename}")
+        
         return filename, None
         
     except Exception as e:
+        import traceback
         error_details = traceback.format_exc()
         return None, (str(e), error_details)
 
