@@ -622,7 +622,7 @@ class DXFGraphicsView(QGraphicsView):
             # ドラッグ開始時の位置を記録
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.last_mouse_pos = event.position().toPointF()
+            self.last_mouse_pos = event.position()
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
@@ -630,7 +630,7 @@ class DXFGraphicsView(QGraphicsView):
         # ドラッグ処理（左ボタンが押されている場合）
         if Qt.MouseButton.LeftButton & event.buttons():
             # 現在のマウス位置と前回位置の差分を計算
-            current_pos = event.position().toPointF()
+            current_pos = event.position()
             delta = current_pos - self.last_mouse_pos
             # ビューの変換行列を直接操作してモデルを移動（パン）
             self.translate(delta.x(), delta.y())
