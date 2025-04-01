@@ -627,10 +627,24 @@ class DXFGraphicsView(QGraphicsView):
     
     def mouseMoveEvent(self, event):
         """マウス移動時のイベント処理"""
+        # ドラッグ処理（左ボタンが押されている場合）
+        if Qt.MouseButton.LeftButton & event.buttons():
+            # 現在のマウス位置と前回位置の差分を計算
+            delta = event.position() - self.last_mouse_pos
+            # ビューポートのスクロールバーを移動
+            hBar = self.horizontalScrollBar()
+            vBar = self.verticalScrollBar()
+            hBar.setValue(hBar.value() - int(delta.x()))
+            vBar.setValue(vBar.value() - int(delta.y()))
+            # 現在位置を更新
+            self.last_mouse_pos = event.position()
+        
         # マウス位置を取得して座標を表示
         pos = self.mapToScene(event.position().toPoint())
         if self.parent() and hasattr(self.parent(), 'update_status_bar'):
             self.parent().update_status_bar(pos.x(), -pos.y())
+        
+        # 親クラスの処理を呼び出す（ドラッグが正しく機能するなら不要かも）
         super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event):
