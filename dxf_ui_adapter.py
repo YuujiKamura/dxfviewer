@@ -245,12 +245,16 @@ class DXFSceneAdapter:
     
     def set_scene_theme(self, theme_name: str) -> None:
         """
-        シーンにテーマを適用
+        シーンにテーマを適用（固定の白背景・黒線）
         
         Args:
-            theme_name: テーマ名
+            theme_name: テーマ名（互換性のためだけに残す）
         """
-        bg_color, line_color = pdf.get_theme_colors(theme_name)
+        # 固定の色を設定
+        bg_color = (255, 255, 255)  # 白背景
+        line_color = (0, 0, 0)      # 黒線
+        
+        # 背景色を適用
         self.scene.setBackgroundBrush(QBrush(QColor(*bg_color)))
     
     def apply_color_to_all_items(self, color: Tuple[int, int, int]) -> None:

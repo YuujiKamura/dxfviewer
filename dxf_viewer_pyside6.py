@@ -11,7 +11,6 @@ import traceback
 import json
 import tempfile
 import uuid
-import psutil
 from datetime import datetime
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QFileDialog, QPushButton, QLabel, QMessageBox, QGraphicsView, 
     QGraphicsScene, QGraphicsItem, QStatusBar, QComboBox, QDialog, 
-    QTextEdit, QCheckBox, QSlider, QGroupBox, QSpinBox
+    QTextEdit, QCheckBox, QSlider, QGroupBox, QSpinBox, QSizePolicy
 )
 from PySide6.QtGui import (
     QAction, QColor, QPen, QBrush, QTransform, QPainterPath, 
@@ -572,122 +571,16 @@ def process_dxf_entity(scene, entity, line_color, app_settings=None):
         entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else "不明"
         return None, (f"エンティティの処理中にエラーが発生: {str(e)}", error_details, entity_type)
 
-# テーマ設定関数
-def get_theme_colors(theme_name):
-    if theme_name == "ダーク":
-        return QColor(40, 40, 40), QColor(255, 255, 255)
-    elif theme_name == "ライト":
-        return QColor(240, 240, 240), QColor(0, 0, 0)
-    elif theme_name == "ブルー":
-        return QColor(25, 35, 45), QColor(200, 220, 255)
-    else:
-        return QColor(40, 40, 40), QColor(255, 255, 255)  # デフォルト
-
-# ファイルからログを読み込む関数
-def read_log_file(filepath):
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read(), None
-    except Exception as e:
-        return None, str(e)
-
-class DXFInfoDialog(QDialog):
-    def __init__(self, doc, parent=None):
-        super().__init__(parent)
-        self.doc = doc
-        self.init_ui()
-    
-    def init_ui(self):
-        self.setWindowTitle("DXFファイル情報")
-        self.setGeometry(200, 200, 600, 400)
-        
-        layout = QVBoxLayout(self)
-        
-        self.info_text = QTextEdit()
-        self.info_text.setReadOnly(True)
-        layout.addWidget(self.info_text)
-        
-        html_info = create_dxf_info_html(self.doc)
-        self.info_text.setHtml(html_info)
-        
-        # OKボタン
-        ok_button = QPushButton("閉じる")
-        ok_button.clicked.connect(self.accept)
-        layout.addWidget(ok_button)
-
-class DebugLogDialog(QDialog):
-    def __init__(self, log_file, parent=None):
-        super().__init__(parent)
-        self.log_file = log_file
-        self.init_ui()
-        self.timer_id = None
-    
-    def init_ui(self):
-        self.setWindowTitle("デバッグログ")
-        self.setGeometry(200, 200, 800, 600)
-        
-        layout = QVBoxLayout(self)
-        
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        layout.addWidget(self.log_text)
-        
-        # 自動更新チェックボックス
-        self.auto_update = QCheckBox("自動更新")
-        self.auto_update.setChecked(True)
-        self.auto_update.stateChanged.connect(self.toggle_auto_update)
-        layout.addWidget(self.auto_update)
-        
-        # 更新ボタン
-        update_button = QPushButton("ログを更新")
-        update_button.clicked.connect(self.update_log)
-        layout.addWidget(update_button)
-        
-        # 閉じるボタン
-        close_button = QPushButton("閉じる")
-        close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button)
-        
-        self.update_log()
-        self.timer_id = self.startTimer(1000)  # 1秒ごとに更新
-    
-    def toggle_auto_update(self, state):
-        if state == Qt.Checked:
-            if not self.timer_id:
-                self.timer_id = self.startTimer(1000)
-        else:
-            if self.timer_id:
-                self.killTimer(self.timer_id)
-                self.timer_id = None
-    
-    def timerEvent(self, event):
-        if event.timerId() == self.timer_id:
-            self.update_log()
-    
-    def update_log(self):
-        log_content, error = read_log_file(self.log_file)
-        if error:
-            self.log_text.setText(f"ログファイルの読み込みに失敗しました: {error}")
-        else:
-            self.log_text.setText(log_content)
-            # スクロールを最下部に移動
-            scrollbar = self.log_text.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
-    
-    def closeEvent(self, event):
-        if self.timer_id:
-            self.killTimer(self.timer_id)
-        super().closeEvent(event)
-
+# DXFビュークラス
 class DXFGraphicsView(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene_ = QGraphicsScene()
         self.setScene(self.scene_)
         
-        # デフォルトの背景色と線の色を設定
-        self.background_color = QColor(40, 40, 40)  # 暗い背景
-        self.line_color = QColor(255, 0, 0)  # 赤色の線（見やすさのため）
+        # 固定の背景色と線の色を設定
+        self.background_color = QColor(255, 255, 255)  # 白背景
+        self.line_color = QColor(0, 0, 0)  # 黒い線
         
         # 初期化
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -710,7 +603,7 @@ class DXFGraphicsView(QGraphicsView):
         
         # 強制線幅モード
         self.force_linewidth = True
-        self.force_linewidth_value = 2.0  # 赤い線なので細めに調整
+        self.force_linewidth_value = 1.0  # 黒線なので普通の太さに
         
         logger.info("DXFGraphicsViewが初期化されました")
     
@@ -738,11 +631,16 @@ class DXFGraphicsView(QGraphicsView):
         logger.debug("ビューがリセットされました")
     
     def apply_theme(self, theme_name):
-        # テーマを適用
-        bg_color, line_color = get_theme_colors(theme_name)
-        self.setBackgroundBrush(QBrush(bg_color))
-        self.line_color = line_color
-        logger.debug(f"テーマを変更: {theme_name}")
+        """テーマを適用（互換性のために残し、固定色に設定）"""
+        # 固定テーマ
+        self.background_color = QColor(255, 255, 255)  # 白背景
+        self.line_color = QColor(0, 0, 0)  # 黒線
+        self.setBackgroundBrush(QBrush(self.background_color))
+        
+        # シーン更新
+        self.scene().update()
+        
+        logger.debug(f"固定テーマを適用しました（白背景、黒線）")
 
 class DXFViewer(QMainWindow):
     def __init__(self, app_settings):
@@ -795,54 +693,36 @@ class DXFViewer(QMainWindow):
         self.sample_button.clicked.connect(self.create_sample)
         toolbar_layout.addWidget(self.sample_button)
         
-        # スクリーンショットボタン
-        self.screenshot_button = QPushButton('スクリーンショット')
-        self.screenshot_button.clicked.connect(self.take_screenshot)
-        toolbar_layout.addWidget(self.screenshot_button)
-        
-        # デバッグログボタン
-        self.debug_log_button = QPushButton('デバッグログ')
-        self.debug_log_button.clicked.connect(self.show_debug_log)
-        toolbar_layout.addWidget(self.debug_log_button)
-        
-        # デバッグモード切り替え
-        self.debug_checkbox = QCheckBox('デバッグモード')
-        self.debug_checkbox.setChecked(self.debug_mode)
-        self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
-        toolbar_layout.addWidget(self.debug_checkbox)
-        
-        # ファイル情報ラベル
-        self.file_label = QLabel('ファイル: なし')
-        toolbar_layout.addWidget(self.file_label)
-        
-        # 右側にスペーサーを入れる
-        toolbar_layout.addStretch()
-        
-        # テーマ選択
-        theme_label = QLabel('テーマ:')
-        toolbar_layout.addWidget(theme_label)
-        
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["ダーク", "ライト", "ブルー"])
-        self.theme_combo.currentTextChanged.connect(self.change_theme)
-        toolbar_layout.addWidget(self.theme_combo)
-        
         # 再読み込みボタン
         self.reload_button = QPushButton('再読み込み')
         self.reload_button.clicked.connect(self.reload_current_file)
-        self.reload_button.setEnabled(False)  # 初期状態では無効
+        self.reload_button.setEnabled(False)
         toolbar_layout.addWidget(self.reload_button)
         
         # 再起動ボタン
-        self.restart_button = QPushButton('再起動')
+        self.restart_button = QPushButton('アプリ再起動')
         self.restart_button.clicked.connect(self.restart_application)
         toolbar_layout.addWidget(self.restart_button)
         
-        # 線幅設定ボタン
-        self.line_width_button = QPushButton('線幅設定')
-        self.line_width_button.clicked.connect(self.show_line_width_dialog)
-        self.line_width_button.setEnabled(False)  # 線幅設定ボタンを無効化
-        toolbar_layout.addWidget(self.line_width_button)
+        # ファイル名表示ラベル
+        self.file_label = QLabel('ファイル: なし')
+        toolbar_layout.addWidget(self.file_label)
+        
+        # 右寄せのスペーサー
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar_layout.addWidget(spacer)
+        
+        # デバッグモードのチェックボックス
+        self.debug_check = QCheckBox('デバッグモード')
+        self.debug_check.setChecked(self.debug_mode)
+        self.debug_check.stateChanged.connect(self.toggle_debug_mode)
+        toolbar_layout.addWidget(self.debug_check)
+        
+        # ログ表示ボタン
+        self.log_button = QPushButton('ログを表示')
+        self.log_button.clicked.connect(self.show_debug_log)
+        toolbar_layout.addWidget(self.log_button)
         
         # DXFビューを設定
         self.dxf_view = DXFGraphicsView(self)
@@ -854,6 +734,9 @@ class DXFViewer(QMainWindow):
         # レイアウトに追加
         main_layout.addLayout(toolbar_layout)
         main_layout.addWidget(self.dxf_view)
+        
+        # マウス座標表示のためにイベントを接続
+        self.dxf_view.viewport().installEventFilter(self)
     
     def toggle_debug_mode(self, state):
         logger.debug(f"チェックボックスの状態値: {state}")
@@ -863,24 +746,60 @@ class DXFViewer(QMainWindow):
         # デバッグモード切り替え時のファイル再読み込みは不要
     
     def show_debug_log(self):
-        dialog = DebugLogDialog(log_file, self)
-        dialog.exec()
-        
+        """デバッグログを表示"""
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), log_file)
+        try:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                log_content = f.read()
+                
+            # ログダイアログを表示
+            dialog = QDialog(self)
+            dialog.setWindowTitle("デバッグログ")
+            dialog.setGeometry(200, 200, 800, 600)
+            
+            layout = QVBoxLayout(dialog)
+            
+            log_text = QTextEdit()
+            log_text.setReadOnly(True)
+            log_text.setText(log_content)
+            layout.addWidget(log_text)
+            
+            # スクロールを最下部に移動
+            scrollbar = log_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+            
+            # 閉じるボタン
+            close_button = QPushButton("閉じる")
+            close_button.clicked.connect(dialog.accept)
+            layout.addWidget(close_button)
+            
+            dialog.exec()
+        except Exception as e:
+            QMessageBox.warning(self, "エラー", f"ログファイルの読み込みに失敗しました: {str(e)}")
+    
     def update_status_bar(self, x, y):
         # ステータスバーに座標情報を表示
         self.statusBar.showMessage(f"X: {x:.2f}, Y: {y:.2f}")
         
-    def change_theme(self, theme):
-        # テーマを変更して再描画（ファイル再読み込みなし）
-        self.dxf_view.apply_theme(theme)
-        # 再描画のみ行い、ファイル再読み込みはしない
-        self.dxf_view.update()
-        self.dxf_view.viewport().update()
-    
     def show_file_info(self):
+        """ファイル情報ダイアログを表示"""
         if self.current_doc:
-            dialog = DXFInfoDialog(self.current_doc, self)
-            dialog.exec()
+            if hasattr(self.current_doc, 'dxfversion'):
+                version = self.current_doc.dxfversion
+            else:
+                version = "不明"
+                
+            info_text = f"DXFバージョン: {version}\n"
+            info_text += f"ファイルパス: {self.current_file}\n"
+            info_text += f"レイヤー数: {len(self.current_doc.layers)}\n"
+            
+            # レイヤー情報
+            info_text += "\nレイヤー一覧:\n"
+            for layer in self.current_doc.layers:
+                info_text += f"- {layer.dxf.name}\n"
+            
+            # 情報ダイアログを表示
+            QMessageBox.information(self, "DXFファイル情報", info_text)
     
     def create_sample(self):
         # サンプルDXFファイルを作成

@@ -373,24 +373,18 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
         return Result(False, None, f"エンティティ処理中にエラーが発生: {str(e)}", error_details)
 
 # テーマ色の取得関数
-def get_theme_colors(theme_name):
+def get_default_colors() -> tuple:
     """
-    テーマ名から背景色と線色を取得する純粋関数
+    デフォルトの色設定を返す純粋関数
     
-    Args:
-        theme_name: テーマ名 ("ダーク", "ライト", "ブルー")
-        
     Returns:
-        Tuple[Tuple[int, int, int], Tuple[int, int, int]]: (背景色, 線色)のタプル
+        tuple: (背景色RGB, 線色RGB)のタプル
     """
-    if theme_name == "ダーク":
-        return (40, 40, 40), (255, 255, 255)
-    elif theme_name == "ライト":
-        return (240, 240, 240), (0, 0, 0)
-    elif theme_name == "ブルー":
-        return (25, 35, 45), (200, 220, 255)
-    else:
-        return (40, 40, 40), (255, 255, 255)  # デフォルト
+    # デフォルトの色
+    bg_color = (255, 255, 255)  # 白背景
+    line_color = (0, 0, 0)      # 黒線
+    
+    return bg_color, line_color
 
 # 同一性検証関数
 def verify_identical_output(func, args1, args2) -> bool:
