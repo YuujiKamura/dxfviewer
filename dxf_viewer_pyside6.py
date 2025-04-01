@@ -99,33 +99,44 @@ class AppSettings:
 
 # ロギング関数
 def setup_logger(debug_mode=False):
-    global logger
+    """ロガーの設定をセットアップ"""
+    global log_file
     
     # ロガーの作成
-    logger = logging.getLogger('dxf_viewer')
+    logger = logging.getLogger('DXFViewer')
+    
+    # 既存のハンドラをクリア
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # デバッグモードならDEBUG、そうでなければINFOレベル
     logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
     
-    # すでにハンドラが設定されている場合は削除
-    if logger.handlers:
-        for handler in logger.handlers:
-            logger.removeHandler(handler)
+    # ログのフォーマット設定
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
     
-    # コンソールハンドラ
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console_format = logging.Formatter('%(levelname)s: %(message)s')
-    console.setFormatter(console_format)
-    logger.addHandler(console)
+    # コンソールへの出力設定
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+    logger.addHandler(console_handler)
     
-    # ファイルハンドラ
+    # ログファイルの設定
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dxf_viewer.log")
     try:
-        file_handler = logging.FileHandler(log_file, 'w', 'utf-8')
-        file_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
-        file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(file_format)
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)  # ファイルには常にDEBUGレベルで出力
         logger.addHandler(file_handler)
     except Exception as e:
         print(f"ログファイルのセットアップに失敗しました: {str(e)}")
+    
+    # デバッグモードなら詳細なメッセージを表示
+    if debug_mode:
+        logger.debug("デバッグモードが有効です")
+        logger.debug(f"Python: {sys.version}")
+        logger.debug(f"OS: {platform.platform()}")
+        logger.debug(f"カレントディレクトリ: {os.getcwd()}")
     
     return logger
 
@@ -142,57 +153,11 @@ def parse_arguments():
 args = parse_arguments()
 logger = setup_logger(args.debug)
 
-# シングルインスタンス管理（psutilを使用）
+# シングルインスタンス管理（一時的に無効化）
 def check_single_instance():
-    """他のインスタンスが実行中かチェック（psutilを使用）"""
-    try:
-        # 現在のプロセスID
-        current_pid = os.getpid()
-        app_name = os.path.basename(sys.argv[0])
-        logger.debug(f"シングルインスタンスチェック: 現在のPID={current_pid}, アプリ名={app_name}")
-        
-        # 再起動フラグがある場合は常に起動を許可
-        if args.restart:
-            logger.debug("再起動フラグが指定されているため、シングルインスタンスチェックをスキップします")
-            return True
-        
-        # 実行中の自分以外のPythonプロセスをカウント
-        running_instances = 0
-        
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                # 自分以外のPythonプロセスをチェック
-                if proc.info['pid'] != current_pid and proc.info['name'] == 'python':
-                    cmdline = proc.info['cmdline'] if 'cmdline' in proc.info else []
-                    
-                    # コマンドラインにアプリ名が含まれるか確認
-                    is_same_app = False
-                    if cmdline:
-                        for cmd in cmdline:
-                            if app_name in cmd:
-                                is_same_app = True
-                                break
-                    
-                    if is_same_app:
-                        running_instances += 1
-                        logger.debug(f"検出: PID={proc.info['pid']}, コマンド={cmdline}")
-            except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError) as e:
-                logger.debug(f"プロセス検査例外: {str(e)}")
-                continue
-        
-        logger.debug(f"検出された他のインスタンス数: {running_instances}")
-        
-        # 実行中のインスタンスがない場合は起動を許可
-        if running_instances == 0:
-            return True
-        else:
-            logger.warning(f"既に他のインスタンスが実行中です (検出数: {running_instances})")
-            return False
-                
-    except Exception as e:
-        # エラーが発生した場合でも起動を許可
-        logger.warning(f"シングルインスタンスチェック中にエラーが発生: {str(e)}")
-        return True
+    """他のインスタンスが実行中かチェック（一時的に無効化）"""
+    # 常にTrueを返して起動を許可
+    return True
 
 # DXF情報関連の純粋関数
 def get_dxf_version_info(doc):
@@ -717,24 +682,35 @@ class DebugLogDialog(QDialog):
 class DXFGraphicsView(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
-        self.setScene(QGraphicsScene(self))
+        self.scene_ = QGraphicsScene()
+        self.setScene(self.scene_)
+        
+        # デフォルトの背景色と線の色を設定
+        self.background_color = QColor(40, 40, 40)  # 暗い背景
+        self.line_color = QColor(255, 0, 0)  # 赤色の線（見やすさのため）
+        
+        # 初期化
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         
         # 背景色を設定
-        bg_color, line_color = get_theme_colors("ダーク")
-        self.setBackgroundBrush(QBrush(bg_color))
+        self.setBackgroundBrush(QBrush(self.background_color))
         
-        # 線の色
-        self.line_color = line_color
+        # ズーム関連
+        self.zoom_factor = 1.2
+        self.current_zoom = 1.0
+        self.min_zoom = 0.1
+        self.max_zoom = 50.0
         
-        # ズーム率
-        self.zoom_factor = 1.15
+        # マウス座標
+        self.last_mouse_pos = QPointF(0, 0)
         
-        # マウス位置追跡
-        self.setMouseTracking(True)
+        # 強制線幅モード
+        self.force_linewidth = True
+        self.force_linewidth_value = 2.0  # 赤い線なので細めに調整
         
         logger.info("DXFGraphicsViewが初期化されました")
     
