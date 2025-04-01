@@ -73,31 +73,19 @@ class AppSettings:
     
     def __init__(self):
         self.settings = QSettings("DXFViewer", "PySide6")
-        # 強制線幅モードの追加
-        self.force_linewidth = True
-        self.force_linewidth_value = 20.0  # この値をDEFAULT_LINE_WIDTHの値と合わせる
-    
-    def save_line_width(self, width):
-        self.settings.setValue("line_width", width)
+        # 強制線幅モードを無効化し、線幅倍率を導入
+        self.force_linewidth = False
+        self.linewidth_scale = 1.5  # 線幅の表示倍率
     
     def load_line_width(self):
-        # 強制線幅モードが有効な場合は常に固定値を返す
-        if self.force_linewidth:
-            logger.info(f"線幅設定をリセットしました。デフォルト値 {self.force_linewidth_value} を使用します。")
-            return self.force_linewidth_value
-        # デフォルト値はDEFAULT_LINE_WIDTH
-        return self.settings.value("line_width", DEFAULT_LINE_WIDTH, type=float)
+        # DXFの本来の線幅を使用し、表示用の倍率を適用
+        base_width = self.settings.value("line_width", DEFAULT_LINE_WIDTH, type=float)
+        logger.info(f"線幅設定：基本線幅 {base_width} × 倍率 {self.linewidth_scale}")
+        return base_width
     
-    def reset_line_width(self):
-        """線幅設定をリセットしてデフォルト値に戻す"""
-        self.settings.remove("line_width")
-        return DEFAULT_LINE_WIDTH
-    
-    def save_theme(self, theme):
-        self.settings.setValue("theme", theme)
-    
-    def load_theme(self):
-        return self.settings.value("theme", "dark")
+    def get_line_width_scale(self):
+        """線幅表示倍率を取得"""
+        return self.linewidth_scale
 
 # ロギング関数
 def setup_logger(debug_mode=False):
@@ -867,98 +855,113 @@ class DXFViewer(QMainWindow):
             )
     
     def load_dxf(self, filename):
-        # 同じファイルが既に読み込まれている場合は再読み込みをスキップ
-        if self.last_loaded_file == filename:
-            logger.info(f"ファイル {filename} は既に読み込み済みです。再読み込みをスキップします。")
+        """DXFファイルを読み込んで処理"""
+        if not filename:
             return
+        
+        try:
+            logger.info(f"DXFファイル読み込み開始: {filename}")
             
-        logger.info(f"DXFファイル読み込み開始: {filename}")
-        
-        # 最後に読み込んだファイル名を更新
-        self.last_loaded_file = filename
-        
-        # ファイル読み込み
-        doc, error = load_dxf_file(filename)
-        if error:
-            err_msg, err_details = error
-            logger.error(f"DXFファイルの読み込みに失敗: {err_msg}\n{err_details}")
-            raise Exception(err_msg)
-        
-        self.current_doc = doc
-        self.current_file = filename  # 現在のファイルパスを保存
-        logger.debug(f"DXFバージョン: {doc.dxfversion}")
-        
-        # シーンをクリア
-        self.dxf_view.scene().clear()
-        
-        # モデル空間からエンティティを取得してシーンに描画
-        self.process_entities(doc.modelspace())
-        
-        # ビューをリセット
-        self.reset_view()
-        
-        # 変更を確実に反映するために更新を強制
-        self.dxf_view.update()
-        self.dxf_view.viewport().update()
-        
-        # 現在のウィンドウタイトルを更新
-        self.setWindowTitle(f'{APP_NAME} - {os.path.basename(filename)}')
-        
-        # ファイル情報ボタンを有効化
-        self.info_button.setEnabled(True)
-        
-        # 再読み込みボタンを有効化
-        self.reload_button.setEnabled(True)
-    
-    def process_entities(self, entities):
-        """モデル空間のエンティティを処理して描画（純粋関数の組み合わせ）"""
-        entity_count = 0
-        error_count = 0
-        
-        # 現在の線幅設定を取得
-        line_width = self.app_settings.load_line_width()
-        logger.debug(f"現在の線幅設定: {line_width}")
-        
-        # DXF UIアダプターを作成
-        from dxf_ui_adapter import DXFSceneAdapter
-        adapter = DXFSceneAdapter(self.dxf_view.scene())
-        
-        # 各エンティティを処理
-        for entity in entities:
-            entity_count += 1
+            # ezdxfでDXFを読み込み
+            try:
+                doc = ezdxf.readfile(filename)
+            except Exception as e:
+                # 読み込みエラーが発生した場合、リカバリーモードで再試行
+                doc, auditor = recover.readfile(filename)
+                if auditor.has_errors:
+                    logger.warning(f"DXFファイルの読み込み時に問題が検出されました: {len(auditor.errors)} エラー")
             
-            # エンティティ情報をログに出力（デバッグモードの場合）
-            if self.debug_mode:
-                if hasattr(entity, 'dxftype'):
-                    logger.debug(f"エンティティ [{entity_count}]: タイプ={entity.dxftype()}")
-                
-                # エンティティの線幅設定を確認
-                if hasattr(entity.dxf, 'lineweight'):
-                    logger.debug(f"  線幅設定: {entity.dxf.lineweight}")
-                
-                # エンティティのレイヤー情報を確認
-                if hasattr(entity.dxf, 'layer'):
-                    layer_name = entity.dxf.layer
-                    layer = self.current_doc.layers.get(layer_name)
-                    if layer and hasattr(layer.dxf, 'lineweight'):
-                        logger.debug(f"  レイヤー: {layer_name}, 線幅: {layer.dxf.lineweight}")
+            # DXFのバージョン情報をログに出力
+            if logger and hasattr(doc, 'dxfversion'):
+                logger.debug(f"DXFバージョン: {doc.dxfversion}")
             
-            # 純粋関数を使用してエンティティのデータを処理
-            import pure_dxf_functions as pdf
-            result = pdf.process_entity_data(entity, self.dxf_view.line_color, line_width)
+            # 線幅設定を取得
+            line_width_scale = self.app_settings.get_line_width_scale()
+            default_width = self.app_settings.load_line_width()
+            logger.debug(f"現在の線幅設定: {default_width} (スケール: {line_width_scale})")
             
-            # 処理結果を描画
-            if result.success:
-                adapter.draw_entity_result(result)
-            else:
-                error_count += 1
-                if self.debug_mode:
-                    logger.warning(f"エンティティ [{entity_count}] 処理エラー: {result.error}")
-        
-        logger.info(f"DXFファイル読み込み完了: エンティティ総数={entity_count}, エラー数={error_count}")
-        
-        # デバッグモードを元に戻す
-        self.dxf_view.update()  # シーンを更新
+            # シーンをクリア
+            self.dxf_view.scene().clear()
+            
+            # 白背景と黒線に固定
+            bg_color = (255, 255, 255)  # 白
+            line_color = (0, 0, 0)      # 黒
+            
+            # 背景色の設定
+            self.dxf_view.scene().setBackgroundBrush(QBrush(QColor(*bg_color)))
+            
+            # モデル空間を取得
+            modelspace = doc.modelspace()
+            
+            # DXFデータとUIの橋渡しをするアダプターを作成
+            from dxf_ui_adapter import DXFSceneAdapter
+            adapter = DXFSceneAdapter(self.dxf_view.scene())
+            
+            # エンティティ処理用のカウンター
+            processed = 0
+            errors = 0
+            
+            # モデル空間内のすべてのエンティティを処理
+            for entity in modelspace:
+                try:
+                    # エンティティタイプをログに出力
+                    if logger:
+                        logger.debug(f"エンティティ [{processed+1}]: タイプ={entity.dxftype()}")
+                    
+                    # 線幅情報をログに出力
+                    if hasattr(entity.dxf, 'lineweight'):
+                        logger.debug(f"  線幅設定: {entity.dxf.lineweight}")
+                    
+                    # レイヤー情報をログに出力
+                    if hasattr(entity.dxf, 'layer'):
+                        layer_name = entity.dxf.layer
+                        layer = doc.layers.get(layer_name)
+                        if layer and hasattr(layer.dxf, 'lineweight'):
+                            logger.debug(f"  レイヤー: {layer_name}, 線幅: {layer.dxf.lineweight}")
+                    
+                    # 純粋関数を使用してエンティティを処理
+                    import pure_dxf_functions as pdf
+                    result = pdf.process_entity_data(entity, line_color, default_width, line_width_scale)
+                    
+                    # 処理が成功した場合、アダプターを使用してUIに描画
+                    if result.success:
+                        adapter.draw_entity_result(result)
+                        processed += 1
+                    else:
+                        # エラーがあった場合はログに出力
+                        logger.warning(f"エンティティ [{processed+1}] 処理エラー: {result.error}")
+                        errors += 1
+                except Exception as e:
+                    # 例外が発生した場合もログに出力
+                    logger.error(f"エンティティ処理中に例外: {str(e)}")
+                    errors += 1
+            
+            logger.info(f"DXFファイル読み込み完了: エンティティ総数={processed}, エラー数={errors}")
+            
+            # ビューをリセット
+            self.reset_view()
+            
+            # 変更を確実に反映するために更新を強制
+            self.dxf_view.update()
+            self.dxf_view.viewport().update()
+            
+            # 現在のウィンドウタイトルを更新
+            self.setWindowTitle(f'{APP_NAME} - {os.path.basename(filename)}')
+            
+            # ファイル情報ボタンを有効化
+            self.info_button.setEnabled(True)
+            
+            # 再読み込みボタンを有効化
+            self.reload_button.setEnabled(True)
+            
+        except Exception as e:
+            error_details = traceback.format_exc()
+            logger.error(f"DXFファイル読み込みエラー: {str(e)}\n{error_details}")
+            QMessageBox.critical(
+                self, 
+                "ファイル読み込みエラー", 
+                f"DXFファイル '{os.path.basename(filename)}' の読み込み中にエラーが発生しました:\n{str(e)}"
+            )
     
     def reset_view(self):
         self.dxf_view.reset_view()
@@ -1084,10 +1087,9 @@ if __name__ == '__main__':
         app = QApplication(sys.argv)
         app.setStyle("Fusion")  # Fusionスタイルを使用（プラットフォーム間で一貫した外観）
         
-        # 線幅設定をリセットしてデフォルト値を使用
+        # アプリケーション設定の初期化
         app_settings = AppSettings()
-        app_settings.reset_line_width()
-        logger.info(f"線幅設定をリセットしました。デフォルト値 {DEFAULT_LINE_WIDTH} を使用します。")
+        logger.info(f"線幅設定：基本線幅 {app_settings.load_line_width()} × 倍率 {app_settings.get_line_width_scale()}")
         
         viewer = DXFViewer(app_settings)
         viewer.show()

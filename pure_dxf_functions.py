@@ -296,7 +296,7 @@ def compute_text_data(text, pos, height, color=(255, 255, 255), entity=None) -> 
     )
 
 # DXFエンティティ処理関数
-def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0) -> Result:
+def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0, width_scale=1.0) -> Result:
     """
     DXFエンティティを処理してデータ構造を生成する純粋関数
     
@@ -304,6 +304,7 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
         entity: DXFエンティティ
         default_color: デフォルト色 (R, G, B)
         default_width: デフォルト線幅
+        width_scale: 線幅の表示倍率
         
     Returns:
         Result: 処理結果
@@ -316,17 +317,20 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
         # エンティティタイプの取得
         entity_type = entity.dxftype() if hasattr(entity, 'dxftype') else '不明'
         
+        # DXFから取得した線幅に倍率を適用
+        calculated_width = calculate_lineweight(entity, default_width) * width_scale
+        
         # エンティティタイプに応じて処理
         if entity_type == 'LINE':
             start = (entity.dxf.start.x, entity.dxf.start.y)
             end = (entity.dxf.end.x, entity.dxf.end.y)
-            line_data = compute_line_data(start, end, default_color, entity, default_width)
+            line_data = compute_line_data(start, end, default_color, entity, calculated_width)
             return Result(True, line_data)
             
         elif entity_type == 'CIRCLE':
             center = (entity.dxf.center.x, entity.dxf.center.y)
             radius = entity.dxf.radius
-            circle_data = compute_circle_data(center, radius, default_color, entity, default_width)
+            circle_data = compute_circle_data(center, radius, default_color, entity, calculated_width)
             return Result(True, circle_data)
             
         elif entity_type == 'ARC':
@@ -334,7 +338,7 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
             radius = entity.dxf.radius
             start_angle = entity.dxf.start_angle
             end_angle = entity.dxf.end_angle
-            arc_data = compute_arc_data(center, radius, start_angle, end_angle, default_color, entity, default_width)
+            arc_data = compute_arc_data(center, radius, start_angle, end_angle, default_color, entity, calculated_width)
             return Result(True, arc_data)
             
         elif entity_type == 'POLYLINE' or entity_type == 'LWPOLYLINE':
@@ -347,7 +351,7 @@ def process_entity_data(entity, default_color=(255, 255, 255), default_width=1.0
                 # 通常のポリラインは頂点オブジェクトを持っている
                 points = [(vertex.dxf.location.x, vertex.dxf.location.y) for vertex in entity.vertices]
             
-            polyline_data = compute_polyline_data(points, default_color, entity, default_width)
+            polyline_data = compute_polyline_data(points, default_color, entity, calculated_width)
             return Result(True, polyline_data)
             
         elif entity_type == 'TEXT' or entity_type == 'MTEXT':
