@@ -599,8 +599,8 @@ class DXFGraphicsView(QGraphicsView):
         except ImportError:
             self.adapter = None
         
-        # マウス座標
-        self.last_mouse_pos = QPointF(0, 0)
+        # マウス座標を正確に初期化
+        self.last_mouse_pos = QPointF(0.0, 0.0)
         
         # 強制線幅モード
         self.force_linewidth = True
@@ -622,7 +622,7 @@ class DXFGraphicsView(QGraphicsView):
             # ドラッグ開始時の位置を記録
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.last_mouse_pos = event.position()
+            self.last_mouse_pos = event.position().toPointF()
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
@@ -630,11 +630,12 @@ class DXFGraphicsView(QGraphicsView):
         # ドラッグ処理（左ボタンが押されている場合）
         if Qt.MouseButton.LeftButton & event.buttons():
             # 現在のマウス位置と前回位置の差分を計算
-            delta = event.position() - self.last_mouse_pos
+            current_pos = event.position().toPointF()
+            delta = current_pos - self.last_mouse_pos
             # ビューの変換行列を直接操作してモデルを移動（パン）
             self.translate(delta.x(), delta.y())
             # 現在位置を更新
-            self.last_mouse_pos = event.position()
+            self.last_mouse_pos = current_pos
             # カーソルを手のアイコンに（視覚的フィードバック）
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         
