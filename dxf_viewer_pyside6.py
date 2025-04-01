@@ -616,12 +616,28 @@ class DXFGraphicsView(QGraphicsView):
         logger.debug(f"ズーム{'イン' if zoom_in else 'アウト'}: 倍率={factor}")
         super().wheelEvent(event)
     
+    def mousePressEvent(self, event):
+        """マウスボタンが押された時のイベント処理"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # ドラッグ開始時の位置を記録
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.last_mouse_pos = event.position()
+        super().mousePressEvent(event)
+    
     def mouseMoveEvent(self, event):
+        """マウス移動時のイベント処理"""
         # マウス位置を取得して座標を表示
         pos = self.mapToScene(event.position().toPoint())
         if self.parent() and hasattr(self.parent(), 'update_status_bar'):
             self.parent().update_status_bar(pos.x(), -pos.y())
         super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        """マウスボタンが離された時のイベント処理"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().mouseReleaseEvent(event)
     
     def reset_view(self):
         # ビューをリセット
