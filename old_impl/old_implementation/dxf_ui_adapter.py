@@ -6,14 +6,20 @@ DXF処理の純粋関数とUIの橋渡しをするアダプターモジュール
 データ計算とUI描画を分離し、テスト可能な構造を提供します。
 """
 
-from typing import List, Tuple, Dict, Any, Optional
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
-from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
-from PySide6.QtCore import QPointF, QRectF, QLineF, Qt
-import traceback
+import os
+import sys
+# カレントディレクトリをPythonパスに追加
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# 純粋関数モジュールをインポート
-import pure_dxf_functions as pdf
+import logging
+import traceback
+from typing import Tuple, List, Dict, Any, Optional, Union, Callable
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem, QGraphicsView
+from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform, QPainter
+from PySide6.QtCore import QPointF, QRectF, QLineF, Qt
+
+# 純粋関数モジュールのインポート
+from old_impl.old_implementation import pure_dxf_functions as pdf
 
 class DXFSceneAdapter:
     """
@@ -291,6 +297,20 @@ class DXFSceneAdapter:
                 # テキストアイテムはテキスト色を変更
                 item.setDefaultTextColor(qcolor)
                 
+    def process_entity(self, entity, color):
+        """
+        process_dxf_entityへのエイリアス（互換性のため）
+        
+        Args:
+            entity: DXFエンティティ
+            color: 色情報
+            
+        Returns:
+            タプル (成功時: 作成されたグラフィックアイテム, エラーメッセージ)
+            または (失敗時: None, エラーメッセージ)
+        """
+        return self.process_dxf_entity(entity, color)
+    
     def process_dxf_entity(self, entity, color):
         """
         DXFエンティティを処理して描画アイテムを作成
@@ -333,4 +353,50 @@ def create_dxf_adapter(scene: QGraphicsScene) -> DXFSceneAdapter:
     Returns:
         DXFSceneAdapter: 新しいアダプターインスタンス
     """
-    return DXFSceneAdapter(scene) 
+    return DXFSceneAdapter(scene)
+
+# 以下、パンテストの結果から得られた改善メソッドを追加
+def configure_graphics_view(view):
+    """
+    QGraphicsViewの描画設定を最適化し、CAD的な操作感を実現する
+    
+    Args:
+        view (QGraphicsView): 設定対象のビュー
+    """
+    # スクロールバーを非表示（CAD的な操作のため）
+    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    
+    # パン操作用の設定
+    view.setDragMode(QGraphicsView.DragMode.NoDrag)  # 独自パン処理のため標準ドラッグは無効化
+    view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+    view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+    
+    # 描画品質と最適化設定
+    view.setRenderHint(QPainter.RenderHint.Antialiasing)
+    view.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    
+    # より効率的な描画モード（必要な部分だけの更新）
+    view.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
+    
+    # パフォーマンス向上のための設定
+    view.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
+    view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
+    view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
+    
+    # ビューの背景を透明に
+    view.setBackgroundBrush(QBrush(Qt.GlobalColor.transparent))
+
+def request_viewport_update(view: QGraphicsView) -> None:
+    """
+    ビューポートの更新を明示的に要求
+    
+    パン・ズーム操作後に呼び出すことで、表示の更新を確実に行う
+    
+    Args:
+        view: 更新を要求するQGraphicsViewインスタンス
+    """
+    if view and view.viewport():
+        view.viewport().update()
+
+# このクラスは削除します - dxf_viewer_pyside6.pyで統合された実装を使用します 

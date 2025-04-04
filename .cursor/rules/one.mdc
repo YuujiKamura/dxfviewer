@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+「問題が発生したら回避策を提案せず、外部検索を行って知見を修正し、根本原因の特定を試みる」
+「コード変更後は必ずテストコードを生成して動作確認する」
+「どうせぶっこわれるので何十回もゼロから繰り返すつもりでやること」

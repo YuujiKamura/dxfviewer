@@ -7,7 +7,9 @@
 """
 
 import unittest
-import pure_dxf_functions as pdf
+import os
+import tempfile
+from old_implementation import pure_dxf_functions as pdf
 
 class TestPureFunctions(unittest.TestCase):
     """
