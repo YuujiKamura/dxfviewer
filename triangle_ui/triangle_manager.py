@@ -12,6 +12,7 @@ import sys
 import math
 import os
 import logging
+import json
 from pathlib import Path
 
 # 親ディレクトリをパスに追加
@@ -610,13 +611,24 @@ class TriangleManagerWindow(QMainWindow):
             self.export_dxf_button.clicked.connect(self.export_to_dxf)
             buttons_layout.addWidget(self.export_dxf_button)
         
-        input_layout.addLayout(buttons_layout)
+        # JSON保存・読み込みボタンを追加
+        json_buttons_layout = QHBoxLayout()
+        
+        self.save_json_button = QPushButton("JSONに保存")
+        self.save_json_button.clicked.connect(self.save_to_json)
+        json_buttons_layout.addWidget(self.save_json_button)
+        
+        self.load_json_button = QPushButton("JSONから読み込み")
+        self.load_json_button.clicked.connect(self.load_from_json)
+        json_buttons_layout.addWidget(self.load_json_button)
+        
+        input_layout.addLayout(json_buttons_layout)
         
         layout.addWidget(input_group)
         
         return panel
     
-    def reset_all(self):
+    def reset_all(self, create_initial=True):
         """すべてのデータをリセット"""
         # データのクリア
         self.triangle_list.clear()
@@ -626,9 +638,10 @@ class TriangleManagerWindow(QMainWindow):
         # ビューのクリア
         self.view.clear_scene()
         
-        # 最初の三角形を作成
-        initial_triangle = TriangleData(100.0, 100.0, 100.0, QPointF(0, 0), 180.0, 1)
-        self.add_triangle_data(initial_triangle)
+        # 最初の三角形を作成（オプション）
+        if create_initial:
+            initial_triangle = TriangleData(100.0, 100.0, 100.0, QPointF(0, 0), 180.0, 1)
+            self.add_triangle_data(initial_triangle)
         
         # 選択情報をリセット
         self.selected_info_label.setText("なし")
@@ -1040,6 +1053,122 @@ class TriangleManagerWindow(QMainWindow):
         except Exception as e:
             logger.error(f"DXF出力エラー: {str(e)}")
             QMessageBox.critical(self, "DXF出力エラー", f"DXFファイルの出力中にエラーが発生しました。\n{str(e)}")
+
+    def save_to_json(self):
+        """三角形データをJSONファイルに保存する"""
+        if not self.triangle_list:
+            QMessageBox.information(self, "JSON保存", "保存する三角形データがありません。")
+            return
+        
+        # 保存ファイル名を取得
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "JSONファイルを保存", "", "JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセルした場合
+        
+        try:
+            # 三角形データをシリアライズ可能な辞書に変換
+            triangle_dicts = []
+            for triangle in self.triangle_list:
+                triangle_dict = {
+                    'number': triangle.number,
+                    'lengths': triangle.lengths,
+                    'points': [
+                        {'x': p.x(), 'y': p.y()} for p in triangle.points
+                    ],
+                    'angle_deg': triangle.angle_deg,
+                    'connection_side': triangle.connection_side,
+                    'parent_number': triangle.parent.number if triangle.parent else -1,
+                    'children': [
+                        child.number if child else -1 for child in triangle.children
+                    ]
+                }
+                triangle_dicts.append(triangle_dict)
+            
+            # JSONファイルに書き込み
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(triangle_dicts, f, indent=2)
+            
+            self.statusBar().showMessage(f"JSONファイルを保存しました: {file_path}")
+            logger.info(f"{len(self.triangle_list)}個の三角形データをJSONファイルに保存しました: {file_path}")
+            QMessageBox.information(self, "JSON保存", f"三角形データをJSONファイルに保存しました。\n{file_path}")
+        
+        except Exception as e:
+            logger.error(f"JSON保存エラー: {str(e)}")
+            QMessageBox.critical(self, "JSON保存エラー", f"JSONファイルの保存中にエラーが発生しました。\n{str(e)}")
+    
+    def load_from_json(self):
+        """JSONファイルから三角形データを読み込む"""
+        # 読み込みファイル名を取得
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "JSONファイルを開く", "", "JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセルした場合
+        
+        try:
+            # JSONファイルを読み込み
+            with open(file_path, 'r', encoding='utf-8') as f:
+                triangle_dicts = json.load(f)
+            
+            # 既存のデータをクリア
+            self.reset_all(create_initial=False)  # 初期三角形を作成しない
+            
+            # 三角形データを作成（最初は接続関係なし）
+            triangles = []
+            for triangle_dict in triangle_dicts:
+                # 点をQPointFに変換
+                points = [
+                    QPointF(p['x'], p['y']) for p in triangle_dict['points']
+                ]
+                
+                # 三角形データの作成
+                triangle = TriangleData(
+                    a=triangle_dict['lengths'][0],
+                    b=triangle_dict['lengths'][1],
+                    c=triangle_dict['lengths'][2],
+                    p_ca=points[0],
+                    angle_deg=triangle_dict['angle_deg'],
+                    number=triangle_dict['number']
+                )
+                
+                # 頂点位置を直接設定
+                triangle.points = points
+                
+                triangles.append(triangle)
+            
+            # 親子関係を設定
+            for i, triangle_dict in enumerate(triangle_dicts):
+                # 親の設定
+                parent_number = triangle_dict['parent_number']
+                if parent_number != -1:
+                    # 親三角形を探す
+                    parent = next((t for t in triangles if t.number == parent_number), None)
+                    if parent:
+                        triangles[i].parent = parent
+                        # 親の子として設定
+                        connection_side = triangle_dict['connection_side']
+                        triangles[i].connection_side = connection_side  # 接続辺を設定
+                        if 0 <= connection_side < 3:
+                            parent.children[connection_side] = triangles[i]
+            
+            # 三角形をUIに追加
+            for triangle in triangles:
+                self.add_triangle_data(triangle)
+            
+            # ビューをリセット
+            self.fit_view()
+            
+            self.statusBar().showMessage(f"JSONファイルを読み込みました: {file_path}")
+            logger.info(f"{len(triangles)}個の三角形データをJSONファイルから読み込みました: {file_path}")
+            QMessageBox.information(self, "JSON読み込み", f"三角形データをJSONファイルから読み込みました。\n{file_path}")
+        
+        except Exception as e:
+            logger.error(f"JSON読み込みエラー: {str(e)}")
+            QMessageBox.critical(self, "JSON読み込みエラー", f"JSONファイルの読み込み中にエラーが発生しました。\n{str(e)}")
 
 def main():
     """メイン関数"""
