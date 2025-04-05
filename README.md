@@ -1,97 +1,62 @@
-# DXF Viewer
+# Triangle Manager
 
-PySide6を使用したシンプルなDXFファイルビューアです。CADファイル（DXF形式）を読み込み、表示、ズーム・パン操作を行うことができます。
+三角形の作成・管理と連結表示を行うPython/PySide6アプリケーション
 
-## 機能
+## 機能概要
 
-* DXFファイルの読み込みと表示
-* ズーム、パン操作によるDXF図面の閲覧
-* 線幅設定のカスタマイズ
-* 原点表示機能
-* ファイル情報の表示
+- 三角形の作成と表示
+- 三角形の辺の長さと角度の調整
+- 複数の三角形を辺で連結
+- 三角形データのDXF形式での出力
+- JSONによるデータの保存と読み込み
 
-## 主要ファイル構成
+## 必要条件
 
-プロジェクトは以下のようなモジュール構成になっています：
-
-```
-dxf_viewer.py           - メインのエントリーポイント・アプリケーション
-├── dxf_core/           - DXF処理の中核機能
-│   ├── __init__.py     - パッケージ初期化
-│   ├── adapter.py      - DXFデータとQt描画の橋渡し
-│   ├── parser.py       - DXFファイル解析
-│   └── renderer.py     - 描画ロジック
-│
-├── ui/                 - ユーザーインターフェース
-│   ├── __init__.py     - パッケージ初期化
-│   ├── graphics_view.py - カスタムグラフィックスビュー
-│   ├── main_window.py  - メインウィンドウ（参照用）
-│   └── view_utils.py   - ビュー用ユーティリティ
-│
-├── requirements.txt    - 依存パッケージ
-└── simple_samples/     - 実装例・サンプルコード
-```
-
-### 依存パッケージ
-
-* PySide6 >= 6.5.0
-* ezdxf >= 1.0.0
+- Python 3.9以上
+- PySide6
+- ezdxf (DXF出力用)
 
 ## インストール方法
 
 ```bash
+# 仮想環境の作成
+python -m venv .venv
+source .venv/bin/activate  # Linuxの場合
+.venv\Scripts\activate     # Windowsの場合
+
+# 依存パッケージのインストール
 pip install -r requirements.txt
 ```
 
 ## 使用方法
 
 ```bash
-python dxf_viewer.py [--debug] [--file <DXFファイルパス>]
+python triangle_ui_app.py
 ```
 
-### コマンドラインオプション
+## 新機能: DXF出力
 
-* `--debug`: デバッグモードを有効化します
-* `--file`: 起動時に開くDXFファイルを指定します
+CADソフトで読み込み可能なDXF形式で三角形データを出力できるようになりました。「DXF出力」ボタンをクリックして保存先を指定すると、現在表示されている三角形がDXFファイルとして出力されます。
 
-## 実験的コード・過去のコード
+出力されるDXFには以下の情報が含まれます：
+- 三角形の形状（ポリライン）
+- 各辺の長さ（テキスト）
 
-このリポジトリには、開発過程で作成されたいくつかの実験的実装や重複コードが含まれています。これらは後学のために保存されていますが、現在のプロジェクトでは使用されていません。
+## テスト
 
-### old_impl/
+アプリケーションには以下の自動テストが含まれています：
 
-このディレクトリには以下のような過去の実装や実験コードが含まれています：
+```bash
+# DXF出力と読み込みの同一性テスト
+python -m tests.test_triangle_dxf_export
 
-* `old_implementation/` - 最初期の実装
-* `20250403_160516/` - 基本的なグラフィックビューの実験
-* `20250403_162608/` - モジュール分割を試みた実装
-* `20250403_182555/` - 新しいUIアプローチの実験
+# JSON保存と読み込みの同一性テスト
+python -m tests.test_triangle_dxf_save_load
 
-### simple_samples/
-
-このディレクトリには、以下のような参考実装やサンプルコードが含まれています：
-
-* `pyside_pan_zoom_sample.py` - PySide6を使用したパン・ズーム実装サンプル
-* `pyqt_pan_zoom_sample.py` - PyQtを使用したパン・ズーム実装サンプル
-* `tkinter_dxf_viewer.py` - Tkinterを使用したDXFビューア実装
-* `tkinter_pan_sample.py` - Tkinterを使用したパン操作サンプル
-* `tkinter_rotated_text_sample.py` - Tkinterでの回転テキスト実装サンプル
-
-## プロジェクト構造の解説
-
-### 現在の実装 (dxf_viewer.py)
-
-現在のメイン実装は `dxf_viewer.py` を中心に構成されています。このファイルは以下のモジュールを使用しています：
-
-1. `ui.graphics_view.DxfGraphicsView` - ズーム・パン機能を持つカスタムグラフィックスビュー
-2. `dxf_core.parser` - DXFファイルの解析機能
-3. `dxf_core.renderer` - 解析したDXFデータの描画機能
-4. `dxf_core.adapter` - Qt描画システムとDXFデータの橋渡し
-
-### 実験的な実装 (core/, renderer/)
-
-`core/` と `renderer/` ディレクトリには、より構造化されたアプローチによる実装が含まれていますが、現在のメインアプリケーションでは直接使用されていません。これらは将来の開発のリファレンスとして保持されています。
+# 三角形の接続関係のテスト
+python -m triangle_ui.test_triangle_connections
+```
 
 ## ライセンス
 
-MIT License 
+MIT 
