@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QGraphicsView, QGraphicsScene, QLineEdit,
     QMessageBox, QGraphicsPolygonItem, QGraphicsLineItem, QDoubleSpinBox,
     QComboBox, QStatusBar, QFileDialog, QGraphicsTextItem, QGraphicsSimpleTextItem,
-    QGraphicsRectItem
+    QGraphicsRectItem, QSlider, QGraphicsEllipseItem
 )
 from PySide6.QtGui import (
     QPainter, QPen, QColor, QPolygonF, QDoubleValidator, QTransform,
@@ -329,7 +329,7 @@ class TriangleItem(QGraphicsPolygonItem):
                 unit_dy = dy / length
                 
                 # 矢印の大きさ
-                arrow_size = 10
+                arrow_size = 5  # 10から5に変更（0.5倍）
                 
                 # 矢印の先端
                 arrow_tip_x = arrow_x + unit_dx * arrow_size
@@ -358,19 +358,11 @@ class TriangleItem(QGraphicsPolygonItem):
             # 辺の名前ラベルを追加（辺の中央に表示）
             mid_x = (p1.x() + p2.x()) / 2
             mid_y = (p1.y() + p2.y()) / 2
-            
-            # 辺に垂直な方向にオフセットを作成
+
             dx = p2.x() - p1.x()
             dy = p2.y() - p1.y()
             length = math.sqrt(dx * dx + dy * dy)
-            if length > 0:
-                # 正規化して15ピクセル離す
-                offset_x = -dy / length * 15
-                offset_y = dx / length * 15
-            else:
-                offset_x = 0
-                offset_y = 0
-            
+
             # 辺名ラベルを追加
             label_item = QGraphicsTextItem(edge_name, self)
             label_item.setDefaultTextColor(QColor(255, 0, 0))  # 赤色
@@ -382,8 +374,8 @@ class TriangleItem(QGraphicsPolygonItem):
             # テキストアイテムの位置を調整
             text_rect = label_item.boundingRect()
             label_item.setPos(
-                mid_x + offset_x - text_rect.width() / 2,
-                mid_y + offset_y - text_rect.height() / 2
+                mid_x + text_rect.width() / 2,
+                mid_y + text_rect.height() / 2
             )
             
             # 辺の寸法値を表示するテキスト
@@ -401,7 +393,7 @@ class TriangleItem(QGraphicsPolygonItem):
             
             # フォントを調整（太字・サイズ）
             font = dimension_text.font()
-            font.setPointSize(8)
+            font.setPointSize(6)  # デフォルトサイズを6に変更
             font.setBold(True)
             dimension_text.setFont(font)
             
@@ -494,6 +486,9 @@ class TriangleManagerWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
+        # 寸法テキストのフォントサイズ（デフォルト値）
+        self.dimension_font_size = 6
+        
         # ウィンドウの設定
         self.setWindowTitle("Triangle Manager")
         self.resize(1200, 800)
@@ -539,6 +534,23 @@ class TriangleManagerWindow(QMainWindow):
         selection_layout.addWidget(self.selected_info_label)
         info_layout.addLayout(selection_layout)
         
+        # 寸法テキストサイズ設定
+        font_size_layout = QHBoxLayout()
+        font_size_layout.addWidget(QLabel("寸法サイズ:"))
+        self.font_size_slider = QSlider(Qt.Horizontal)
+        self.font_size_slider.setMinimum(2)
+        self.font_size_slider.setMaximum(12)
+        self.font_size_slider.setValue(self.dimension_font_size)
+        self.font_size_slider.setTickPosition(QSlider.TicksBelow)
+        self.font_size_slider.setTickInterval(1)
+        self.font_size_slider.valueChanged.connect(self.update_dimension_font_size)
+        font_size_layout.addWidget(self.font_size_slider)
+        
+        # サイズ表示ラベル
+        self.font_size_label = QLabel(f"{self.dimension_font_size}")
+        font_size_layout.addWidget(self.font_size_label)
+        
+        info_layout.addLayout(font_size_layout)
         layout.addWidget(info_group)
         
         # 入力部分
@@ -630,29 +642,66 @@ class TriangleManagerWindow(QMainWindow):
             mid_y = dim_info['mid_y']
             angle = dim_info['angle']
             
-            # シーンに追加
+            # 現在のフォントサイズで更新
+            font = text.font()
+            font.setPointSize(self.dimension_font_size)
+            text.setFont(font)
+            
+            # テキストサイズ変更に伴い背景サイズも調整
+            text_rect = text.boundingRect()
+            bg.setRect(text_rect)
+            
+            # 描画原点を示す青いドット（サイズを半分に）
+            origin_dot = QGraphicsEllipseItem(-1, -1, 2, 2)
+            origin_dot.setBrush(QColor(0, 0, 255))  # 青色
+            origin_dot.setPen(QPen(Qt.NoPen))
+            
+            # ZValueを設定（背景が最背面、テキストが中間、青ドットが最前面）
+            bg.setZValue(0)  # 最背面
+            text.setZValue(1)  # 中間
+            origin_dot.setZValue(2)  # 最前面
+            
+            # シーンに追加（背景を最初に追加して最背面に）
             self.view.scene().addItem(bg)
             self.view.scene().addItem(text)
+            self.view.scene().addItem(origin_dot)
             
-            # 変形行列を作成
-            transform = QTransform()
-            
-            # テキストと背景を辺の中央に配置
-            transform.translate(mid_x, mid_y)
+            # 辺上の変形行列を作成（テキスト位置の基準となる）
+            edge_transform = QTransform()
+            edge_transform.translate(mid_x, mid_y)
             
             # 辺の角度に合わせて回転
-            transform.rotate(angle)
+            if 90 <= angle <= 270:
+                edge_transform.rotate(angle + 180)
+            else:
+                edge_transform.rotate(angle)
             
-            # テキストを辺から少し離す
-            transform.translate(0, 10)
+            # 青ドットは辺上に配置（オフセットなし）
+            origin_dot.setTransform(edge_transform)
+            
+            # テキスト用の変形行列（辺から少し離す）
+            text_transform = QTransform(edge_transform)
+            text_transform.translate(0, 1)
             
             # 中央揃えになるよう調整
             text_rect = text.boundingRect()
-            transform.translate(-text_rect.width()/2, -text_rect.height()/2)
+            # 背景も同じサイズに更新
+            bg.setRect(text_rect)
+            
+            # テキストと背景を正確に中央揃えするための位置調整
+            bg_transform = QTransform(text_transform)
+            
+            # テキストの中心が原点に来るよう調整（左右は中央揃え、上下は上揃えに）
+            text_transform.translate(-text_rect.width()/2, 0)
+            bg_transform.translate(-text_rect.width()/2, 0)
             
             # 変形を適用
-            bg.setTransform(transform)
-            text.setTransform(transform)
+            text.setTransform(text_transform)
+            bg.setTransform(bg_transform)
+            
+            # デバッグ情報として寸法情報とテキスト位置を関連付け
+            text.setData(1, {'mid_x': mid_x, 'mid_y': mid_y, 'angle': angle})
+            bg.setData(0, text)  # 背景とテキストを関連付け
         
         # ラベルの追加（三角形番号表示）
         label = QGraphicsTextItem(str(triangle_data.number))
@@ -838,6 +887,84 @@ class TriangleManagerWindow(QMainWindow):
     def fit_view(self):
         """ビューを全ての三角形が見える大きさに調整"""
         self.view.fit_scene_in_view()
+    
+    def update_dimension_font_size(self, size):
+        """寸法テキストのフォントサイズを更新"""
+        self.dimension_font_size = size
+        self.font_size_label.setText(f"{size}")
+        
+        # 既存の全ての三角形の寸法テキストサイズを更新
+        for item in self.view.scene().items():
+            if isinstance(item, QGraphicsSimpleTextItem):
+                # データ属性からチェックして、寸法テキストかどうか確認
+                if item.data(0) is not None and isinstance(item.data(0), int) and 0 <= item.data(0) <= 2:
+                    # フォントサイズを更新
+                    font = item.font()
+                    font.setPointSize(size)
+                    item.setFont(font)
+                    
+                    # 関連情報を取得
+                    dim_info = item.data(1)
+                    if dim_info:
+                        mid_x = dim_info['mid_x']
+                        mid_y = dim_info['mid_y']
+                        angle = dim_info['angle']
+                        
+                        # バウンディングボックスを再計算
+                        text_rect = item.boundingRect()
+                        
+                        # 背景アイテムを探して更新
+                        for bg in self.view.scene().items():
+                            if isinstance(bg, QGraphicsRectItem) and bg.data(0) == item:
+                                # 背景サイズをテキストサイズに合わせて更新
+                                bg.setRect(text_rect)
+                                
+                                # ZValueを再設定（背景が最背面）
+                                bg.setZValue(0)
+                                item.setZValue(1)
+                                
+                                # 変形行列を作成
+                                transform = QTransform()
+                                transform.translate(mid_x, mid_y)
+                                
+                                # 辺の角度に合わせて回転
+                                if 90 <= angle <= 270:
+                                    transform.rotate(angle + 180)
+                                else:
+                                    transform.rotate(angle)
+                                
+                                # 辺上の原点と、テキスト位置を分離
+                                # 青ドット用の変形行列を探して更新
+                                for dot in self.view.scene().items():
+                                    if isinstance(dot, QGraphicsEllipseItem) and dot.brush().color() == QColor(0, 0, 255):
+                                        # ドットとテキストの位置関係をチェック
+                                        dot_pos = dot.pos()
+                                        text_pos = item.pos()
+                                        
+                                        # 同じ位置にあるドットを探す
+                                        if abs(dot_pos.x() - text_pos.x()) < 20 and abs(dot_pos.y() - text_pos.y()) < 20:
+                                            # ドットは辺上に配置
+                                            dot.setTransform(transform)
+                                            break
+                                
+                                # テキスト用の変形行列（辺から少し離す）
+                                text_transform = QTransform(transform)
+                                text_transform.translate(0, 1)
+                                
+                                # テキストと背景を正確に中央揃えするための位置調整
+                                bg_transform = QTransform(text_transform)
+                                
+                                # テキストの中心が原点に来るよう調整（左右は中央揃え、上下は上揃えに）
+                                text_transform.translate(-text_rect.width()/2, 0)
+                                bg_transform.translate(-text_rect.width()/2, 0)
+                                
+                                # 変形を適用
+                                item.setTransform(text_transform)
+                                bg.setTransform(bg_transform)
+                                break
+        
+        # ビューを更新
+        self.view.update()
 
 def main():
     """メイン関数"""
