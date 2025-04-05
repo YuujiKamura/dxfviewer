@@ -329,7 +329,7 @@ class TriangleItem(QGraphicsPolygonItem):
                 unit_dy = dy / length
                 
                 # 矢印の大きさ
-                arrow_size = 5  # 10から5に変更（0.5倍）
+                arrow_size = 3  # 10から5に変更（0.5倍）
                 
                 # 矢印の先端
                 arrow_tip_x = arrow_x + unit_dx * arrow_size
@@ -434,12 +434,12 @@ class TriangleItem(QGraphicsPolygonItem):
     
     def hoverEnterEvent(self, event):
         """ホバー進入イベント処理"""
-        # ホバー時に辺の視認性を向上
-        for line in self.side_lines:
-            pen = line.pen()
-            pen.setColor(QColor(100, 200, 255, 100))
-            line.setPen(pen)
-        self.update()
+        # ホバー時の薄い青のハイライトを削除
+        # for line in self.side_lines:
+        #     pen = line.pen()
+        #     pen.setColor(QColor(100, 200, 255, 100))
+        #     line.setPen(pen)
+        # self.update()
         super().hoverEnterEvent(event)
     
     def hoverLeaveEvent(self, event):
