@@ -595,6 +595,12 @@ class TriangleManagerWindow(QMainWindow):
         self.add_button.clicked.connect(self.add_triangle)
         buttons_layout.addWidget(self.add_button)
         
+        # 三角形書き換えボタン
+        self.update_triangle_button = QPushButton("選択中の三角形を変更")
+        self.update_triangle_button.clicked.connect(self.update_selected_triangle)
+        self.update_triangle_button.setEnabled(False)  # 初期状態では無効
+        buttons_layout.addWidget(self.update_triangle_button)
+        
         # リセットボタン
         reset_button = QPushButton("リセット")
         reset_button.clicked.connect(self.reset_all)
@@ -610,6 +616,9 @@ class TriangleManagerWindow(QMainWindow):
             self.export_dxf_button = QPushButton("DXF出力")
             self.export_dxf_button.clicked.connect(self.export_to_dxf)
             buttons_layout.addWidget(self.export_dxf_button)
+        
+        # 元のボタンレイアウトを追加
+        input_layout.addLayout(buttons_layout)
         
         # JSON保存・読み込みボタンを追加
         json_buttons_layout = QHBoxLayout()
@@ -762,6 +771,9 @@ class TriangleManagerWindow(QMainWindow):
         # 選択情報を更新
         self.selected_parent_number = triangle_number
         self.selected_side_index = side_index
+        
+        # 書き換えボタンを有効化
+        self.update_triangle_button.setEnabled(True)
         
         # 表示を更新
         triangle = next((t for t in self.triangle_list if t.number == triangle_number), None)
@@ -1169,6 +1181,75 @@ class TriangleManagerWindow(QMainWindow):
         except Exception as e:
             logger.error(f"JSON読み込みエラー: {str(e)}")
             QMessageBox.critical(self, "JSON読み込みエラー", f"JSONファイルの読み込み中にエラーが発生しました。\n{str(e)}")
+
+    def update_selected_triangle(self):
+        """選択中の三角形の辺の長さを変更する"""
+        # 選択チェック
+        if self.selected_parent_number < 0 or self.selected_side_index < 0:
+            QMessageBox.warning(self, "選択エラー", "三角形の辺が選択されていません")
+            return
+        
+        # 選択された三角形を取得
+        selected_triangle = next((t for t in self.triangle_list if t.number == self.selected_parent_number), None)
+        if not selected_triangle:
+            QMessageBox.warning(self, "エラー", "選択された三角形が見つかりません")
+            return
+        
+        # 新しい辺の長さを取得
+        try:
+            new_len_b = float(self.new_len_b_input.text())
+            new_len_c = float(self.new_len_c_input.text())
+        except ValueError:
+            QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
+            return
+        
+        # 選択された辺のインデックスに応じて処理を分岐
+        if self.selected_side_index == 0:  # 辺A
+            # 辺AはCAからABへの辺。辺Bと辺Cを更新
+            new_lengths = [selected_triangle.lengths[0], new_len_b, new_len_c]
+        elif self.selected_side_index == 1:  # 辺B
+            # 辺BはABからBCへの辺。辺Aと辺Cを更新
+            new_lengths = [new_len_b, selected_triangle.lengths[1], new_len_c]
+        elif self.selected_side_index == 2:  # 辺C
+            # 辺CはBCからCAへの辺。辺Aと辺Bを更新
+            new_lengths = [new_len_b, new_len_c, selected_triangle.lengths[2]]
+        else:
+            QMessageBox.warning(self, "エラー", "無効な辺インデックスです")
+            return
+        
+        # 三角形の成立条件をチェック
+        if not selected_triangle.is_valid_lengths(new_lengths[0], new_lengths[1], new_lengths[2]):
+            QMessageBox.warning(self, "三角形エラー", 
+                             f"指定された辺の長さ ({new_lengths[0]:.1f}, {new_lengths[1]:.1f}, {new_lengths[2]:.1f}) では三角形が成立しません")
+            return
+        
+        # 元の位置情報を保存
+        original_p_ca = QPointF(selected_triangle.points[0])
+        original_angle = selected_triangle.angle_deg
+        
+        # 辺の長さを更新
+        selected_triangle.lengths = new_lengths
+        
+        # 頂点を再計算
+        selected_triangle.points[0] = original_p_ca  # CA点は変更しない
+        selected_triangle.angle_deg = original_angle  # 角度も維持
+        selected_triangle.calculate_points()
+        
+        # シーンをクリアして全ての三角形を再描画
+        self.view.clear_scene()
+        for triangle in self.triangle_list:
+            self.add_triangle_data(triangle)
+        
+        # 選択をクリア
+        self.selected_parent_number = -1
+        self.selected_side_index = -1
+        self.selected_info_label.setText("なし")
+        self.update_triangle_button.setEnabled(False)
+        
+        # ビューを更新
+        self.fit_view()
+        
+        self.statusBar().showMessage(f"三角形 {selected_triangle.number} の辺を変更しました")
 
 def main():
     """メイン関数"""
