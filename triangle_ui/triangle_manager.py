@@ -40,6 +40,16 @@ import math
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor
 
+# DXF出力用にezdxfをインポート
+try:
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment
+    HAS_EZDXF = True
+except ImportError:
+    HAS_EZDXF = False
+    logger.warning("ezdxfモジュールが見つかりません。DXF出力機能は利用できません。")
+    logger.warning("インストールには: pip install ezdxf を実行してください。")
+
 class TriangleData:
     """三角形のデータと計算ロジックを保持するクラス"""
     def __init__(self, a=0.0, b=0.0, c=0.0, p_ca=QPointF(0, 0), angle_deg=180.0, number=1, parent=None, connection_side=-1):
@@ -521,7 +531,7 @@ class TriangleManagerWindow(QMainWindow):
     def create_control_panel(self):
         """コントロールパネルを作成"""
         panel = QWidget()
-        layout = QHBoxLayout(panel)
+        layout = QVBoxLayout(panel)
         
         # 情報表示部分
         info_group = QWidget()
@@ -593,6 +603,12 @@ class TriangleManagerWindow(QMainWindow):
         fit_button = QPushButton("全体表示")
         fit_button.clicked.connect(self.fit_view)
         buttons_layout.addWidget(fit_button)
+        
+        # DXF出力ボタンを追加
+        if HAS_EZDXF:
+            self.export_dxf_button = QPushButton("DXF出力")
+            self.export_dxf_button.clicked.connect(self.export_to_dxf)
+            buttons_layout.addWidget(self.export_dxf_button)
         
         input_layout.addLayout(buttons_layout)
         
@@ -965,6 +981,65 @@ class TriangleManagerWindow(QMainWindow):
         
         # ビューを更新
         self.view.update()
+
+    def export_to_dxf(self):
+        """三角形データをDXFファイルに出力する"""
+        if not HAS_EZDXF:
+            QMessageBox.warning(self, "DXF出力エラー", 
+                               "ezdxfモジュールがインストールされていないため、DXF出力機能は利用できません。\n"
+                               "インストールするには: pip install ezdxf を実行してください。")
+            return
+        
+        if not self.triangle_list:
+            QMessageBox.information(self, "DXF出力", "出力する三角形データがありません。")
+            return
+        
+        # 保存ファイル名を取得
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "DXFファイルを保存", "", "DXF Files (*.dxf)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセルした場合
+        
+        try:
+            # R2010形式のDXFドキュメントを作成
+            doc = ezdxf.new('R2010')
+            msp = doc.modelspace()
+            
+            # 各三角形をポリラインとして追加
+            for triangle_data in self.triangle_list:
+                if triangle_data and triangle_data.points:
+                    # 三角形の点を取得
+                    points = [(p.x(), p.y(), 0) for p in triangle_data.points]
+                    # 閉じたポリラインを作成
+                    points.append(points[0])  # 最初の点を追加して閉じる
+                    
+                    # ポリラインをモデルスペースに追加
+                    msp.add_lwpolyline(points)
+                    
+                    # 寸法テキストを追加
+                    for i, length in enumerate(triangle_data.lengths):
+                        # 辺の中点を計算
+                        p1, p2 = triangle_data.get_side_line(i)
+                        mid_x = (p1.x() + p2.x()) / 2
+                        mid_y = (p1.y() + p2.y()) / 2
+                        
+                        # テキスト追加（最新のezdxfではパラメータ名が変更されている）
+                        text = msp.add_text(f"{length:.1f}", height=length * 0.05)
+                        text.dxf.insert = (mid_x, mid_y)
+                        text.dxf.halign = 4  # 4=Middle
+                        text.dxf.valign = 2  # 2=Middle
+            
+            # DXFファイルを保存
+            doc.saveas(file_path)
+            
+            self.statusBar().showMessage(f"DXFファイルを保存しました: {file_path}")
+            QMessageBox.information(self, "DXF出力", f"三角形データをDXFファイルに出力しました。\n{file_path}")
+        
+        except Exception as e:
+            logger.error(f"DXF出力エラー: {str(e)}")
+            QMessageBox.critical(self, "DXF出力エラー", f"DXFファイルの出力中にエラーが発生しました。\n{str(e)}")
 
 def main():
     """メイン関数"""
