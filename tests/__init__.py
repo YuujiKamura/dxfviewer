@@ -1,5 +1,1 @@
-"""
-DXF Viewerのテストモジュール
-"""
-
-# DXFビューアテストパッケージ 
+# triangle tests 

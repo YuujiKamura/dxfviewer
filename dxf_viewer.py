@@ -61,7 +61,7 @@ def setup_logger(debug_mode=False):
         logger.removeHandler(handler)
     
     # デバッグモードならDEBUG、そうでなければINFOレベル
-    logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+    logger.setLevel(logging.DEBUG)  # 常にDEBUGレベルに設定
     
     # ログのフォーマット設定
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
@@ -69,8 +69,16 @@ def setup_logger(debug_mode=False):
     # コンソールへの出力設定
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
+    
+    # ファイルへの出力設定
+    file_handler = logging.FileHandler('dxf_viewer_debug.log', mode='w')
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+    
+    logger.info(f"ロガーをセットアップしました。デバッグモード: {debug_mode}")
     
     return logger
 
@@ -81,7 +89,7 @@ class DXFViewerMainWindow(QMainWindow):
         super().__init__()
         
         self.file_path = file_path
-        self.debug_mode = debug_mode
+        self.debug_mode = True  # 常にデバッグモードを有効に
         self.current_line_width = 1.0  # デフォルトの線幅を倍率として扱う
         self.dxf_data = None  # DXFデータを保持
         
@@ -105,6 +113,10 @@ class DXFViewerMainWindow(QMainWindow):
         )
         layout.addWidget(self.view)
         
+        # ズーム・パン操作のシグナル接続
+        self.view.zoom_changed.connect(self.on_zoom_changed)
+        self.view.view_panned.connect(self.on_view_panned)
+        
         # ボタンレイアウト
         button_layout = QHBoxLayout()
         layout.addLayout(button_layout)
@@ -123,6 +135,11 @@ class DXFViewerMainWindow(QMainWindow):
         origin_button = QPushButton("原点表示")
         origin_button.clicked.connect(self.draw_origin)
         button_layout.addWidget(origin_button)
+        
+        # デバッグ情報表示ボタン
+        debug_button = QPushButton("デバッグ情報")
+        debug_button.clicked.connect(self.show_debug_info)
+        button_layout.addWidget(debug_button)
         
         # 線幅設定のラベル
         line_width_label = QLabel("線幅倍率:")
@@ -157,6 +174,51 @@ class DXFViewerMainWindow(QMainWindow):
         
         # ログ初期化
         logger.info(f"DXF Viewerを初期化しました。ファイル: {self.file_path}")
+
+    def on_zoom_changed(self, zoom_factor):
+        """ズーム倍率が変更された時の処理"""
+        logger.debug(f"ズーム倍率が変更されました: {zoom_factor:.2f}x")
+        status_text = f"ズーム: {zoom_factor:.2f}x"
+        self.statusBar().showMessage(status_text)
+    
+    def on_view_panned(self):
+        """ビューがパンされた時の処理"""
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        logger.debug(f"ビューがパンされました。中心位置: ({center.x():.1f}, {center.y():.1f})")
+        
+        # シーンの表示範囲
+        scene_rect = self.view.scene().sceneRect()
+        viewport_rect = self.view.mapToScene(self.view.viewport().rect()).boundingRect()
+        
+        logger.debug(f"シーンレクト: ({scene_rect.x():.1f}, {scene_rect.y():.1f}, {scene_rect.width():.1f}, {scene_rect.height():.1f})")
+        logger.debug(f"ビューポート: ({viewport_rect.x():.1f}, {viewport_rect.y():.1f}, {viewport_rect.width():.1f}, {viewport_rect.height():.1f})")
+
+    def show_debug_info(self):
+        """デバッグ情報を表示"""
+        # シーンレクト
+        scene_rect = self.view.scene().sceneRect()
+        
+        # ビューポートのシーン座標上での矩形
+        viewport_rect = self.view.mapToScene(self.view.viewport().rect()).boundingRect()
+        
+        # 現在のトランスフォーム
+        transform = self.view.transform()
+        
+        # デバッグ情報の準備
+        debug_info = f"""
+デバッグ情報:
+ズーム倍率: {self.view.current_zoom:.2f}x
+シーンレクト: ({scene_rect.x():.1f}, {scene_rect.y():.1f}, {scene_rect.width():.1f}, {scene_rect.height():.1f})
+ビューポート: ({viewport_rect.x():.1f}, {viewport_rect.y():.1f}, {viewport_rect.width():.1f}, {viewport_rect.height():.1f})
+トランスフォーム: [m11={transform.m11():.2f}, m12={transform.m12():.2f}, m21={transform.m21():.2f}, m22={transform.m22():.2f}, dx={transform.dx():.2f}, dy={transform.dy():.2f}]
+
+アイテム数: {len(self.view.scene().items())}
+"""
+        # ログに出力
+        logger.debug(debug_info)
+        
+        # メッセージボックスに表示
+        QMessageBox.information(self, "デバッグ情報", debug_info)
 
     def on_line_width_changed(self, index):
         """線幅倍率が変更されたときの処理"""
@@ -199,11 +261,12 @@ class DXFViewerMainWindow(QMainWindow):
             from dxf_core.renderer import draw_dxf_entities_with_adapter
             draw_dxf_entities_with_adapter(adapter, self.dxf_data)
             
-            # 表示範囲を調整
-            self.view.setup_scene_rect(margin_factor=5.0)
+            # アイテムに合わせてビューをフィット（シーンレクトは変更しない）
             self.view.fit_scene_in_view()
             
             logger.debug(f"DXFデータを線幅倍率 {self.current_line_width}x で再描画しました")
+            logger.debug(f"シーンレクト: {self.view.scene().sceneRect()}")
+            logger.debug(f"アイテム境界: {self.view.scene().itemsBoundingRect()}")
             
         except Exception as e:
             error_msg = f"DXFデータの再描画に失敗しました: {str(e)}"
@@ -257,6 +320,14 @@ class DXFViewerMainWindow(QMainWindow):
         origin_action.triggered.connect(self.draw_origin)
         view_menu.addAction(origin_action)
         
+        # デバッグメニュー
+        debug_menu = menubar.addMenu('デバッグ')
+        
+        # デバッグ情報
+        debug_info_action = QAction('デバッグ情報', self)
+        debug_info_action.triggered.connect(self.show_debug_info)
+        debug_menu.addAction(debug_info_action)
+        
         # ツールバーの作成
         toolbar = self.addToolBar('メインツールバー')
         toolbar.addAction(open_action)
@@ -302,11 +373,11 @@ class DXFViewerMainWindow(QMainWindow):
         coord_text.setPos(15, 15)
         coord_text.setDefaultTextColor(QColor(0, 0, 255))
         
-        # シーンレクトの設定
-        self.view.setup_scene_rect(margin_factor=5.0)
+        # シーンを初期化（一度だけ大きなシーンレクトを設定）
+        self.view.initialize_view()
         
-        # 表示範囲を調整
-        self.view.fit_scene_in_view()
+        logger.debug(f"原点を描画しました。シーンレクト: {scene.sceneRect()}")
+        logger.debug(f"アイテム境界: {scene.itemsBoundingRect()}")
         
         self.statusBar().showMessage(f"原点を表示しました (線幅倍率: {self.current_line_width}x)")
 
@@ -347,9 +418,12 @@ class DXFViewerMainWindow(QMainWindow):
             from dxf_core.renderer import draw_dxf_entities_with_adapter
             draw_dxf_entities_with_adapter(adapter, self.dxf_data)
             
-            # 表示範囲を調整
-            self.view.setup_scene_rect(margin_factor=5.0)
+            # アイテムに合わせてビューをフィット（シーンレクトは変更しない）
             self.view.fit_scene_in_view()
+            
+            # シーンレクトとアイテム境界のログ出力
+            logger.debug(f"ファイル読み込み後のシーンレクト: {self.view.scene().sceneRect()}")
+            logger.debug(f"ファイル読み込み後のアイテム境界: {self.view.scene().itemsBoundingRect()}")
             
             # ファイル情報の更新
             self.update_file_info(self.dxf_data)
@@ -398,7 +472,7 @@ def main():
     
     # ロガーの設定
     global logger
-    logger = setup_logger(debug_mode=args.debug)
+    logger = setup_logger(debug_mode=True)  # 常にデバッグモードを有効に
     
     # QPainterの警告を完全に抑制するための環境変数を設定
     os.environ["QT_LOGGING_RULES"] = "*=false"
@@ -416,7 +490,7 @@ def main():
     app = QApplication(sys.argv)
     
     # メインウィンドウ作成
-    window = DXFViewerMainWindow(file_path=args.file, debug_mode=args.debug)
+    window = DXFViewerMainWindow(file_path=args.file, debug_mode=True)  # 常にデバッグモードを有効に
     window.show()
     
     # アプリケーション実行

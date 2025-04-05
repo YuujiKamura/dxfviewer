@@ -8,15 +8,16 @@ DXF表示用のカスタムグラフィックスビュー
 simple_samples/pyside_pan_zoom_sample.pyと同様のロジックで実装。
 """
 
+import math
 import logging
 from typing import Optional, Tuple, List
 
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem
-from PySide6.QtGui import QPainter, QWheelEvent, QMouseEvent, QKeyEvent, QPen, QColor, QBrush, QFont
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem, QRubberBand
+from PySide6.QtGui import QPainter, QWheelEvent, QMouseEvent, QKeyEvent, QPen, QColor, QBrush, QFont, QTransform
 from PySide6.QtCore import Qt, QPoint, QPointF, Signal, QRectF, QLineF
 
-# ロガーの設定
-logger = logging.getLogger("dxf_viewer")
+# ロガーの取得
+logger = logging.getLogger('DXFViewer')
 
 class DxfGraphicsView(QGraphicsView):
     """
@@ -111,18 +112,8 @@ class DxfGraphicsView(QGraphicsView):
         self.current_zoom = 1.0
         self.zoom_changed.emit(self.current_zoom)
         
-        # シーンの内容に合わせてビューを調整
-        if not self.scene().items():
-            # アイテムがない場合はデフォルトのビュー範囲を設定
-            self.scene().setSceneRect(-500, -500, 1000, 1000)
-        else:
-            # アイテムがある場合はそれに合わせる
-            self.scene().setSceneRect(self.scene().itemsBoundingRect())
-            self.fitInView(self.scene().itemsBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
-            # 少し余裕を持たせる
-            self.scale(0.9, 0.9)
-            self.current_zoom = 0.9
-            self.zoom_changed.emit(self.current_zoom)
+        # シーンの内容に合わせてビューを調整（シーンレクトは変更しない）
+        self.fit_scene_in_view()
         
         # 画面の更新を要求
         self.viewport().update()
@@ -256,10 +247,38 @@ class DxfGraphicsView(QGraphicsView):
         # 画面の更新を要求
         self.viewport().update()
     
-    def fit_scene_in_view(self):
-        """シーンの内容に合わせてビューを調整"""
+    def initialize_view(self, items=None):
+        """
+        シーンを初期化し、大きな固定のシーンレクトを設定
+        
+        Args:
+            items: アイテムのリスト（Noneの場合は全アイテム）
+        """
+        # 十分に大きなシーンレクトを設定（事実上無制限のパン）
+        large_rect = QRectF(-100000, -100000, 200000, 200000)
+        self.scene().setSceneRect(large_rect)
+        
+        # 現在のアイテムに合わせてビューをフィット
+        self.fit_scene_in_view()
+        
+        logger.debug(f"ビュー初期化: シーンレクト {large_rect}, 現在のズーム {self.current_zoom:.2f}x")
+
+    def fit_scene_in_view(self, extra_scale=0.8):
+        """
+        シーンの内容に合わせてビューを調整（シーンレクトは変更しない）
+        
+        Args:
+            extra_scale: フィット後に適用する追加スケール係数（デフォルトは0.8 = ズームアウト）
+        """
         if self.scene() and not self.scene().itemsBoundingRect().isEmpty():
+            # アイテムの境界にフィット
             self.fitInView(self.scene().itemsBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            
+            # スケールを調整して、より広い範囲を表示（ズームアウト）
+            if extra_scale != 1.0:
+                self.scale(extra_scale, extra_scale)
+                self.current_zoom *= extra_scale
+                self.zoom_changed.emit(self.current_zoom)
             
         # 画面の更新を要求
         self.viewport().update()
@@ -362,4 +381,35 @@ class DxfGraphicsView(QGraphicsView):
         self.scene().addItem(self.debug_text)
         
         # 画面の更新を要求
-        self.viewport().update() 
+        self.viewport().update()
+    
+    # マウスイベント処理（パンのためのオーバーライド）
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """
+        マウス移動イベント処理
+        
+        パン操作を追跡し、シグナルを発行します。
+        """
+        # 親クラスのイベント処理を呼び出す
+        super().mouseMoveEvent(event)
+        
+        # ドラッグモードがScrollHandDragで、マウスの左ボタンが押されている場合
+        if self.dragMode() == QGraphicsView.DragMode.ScrollHandDrag and event.buttons() & Qt.MouseButton.LeftButton:
+            # パン操作シグナルを発行
+            self.view_panned.emit()
+            
+            # デバッグログ
+            center = self.mapToScene(self.viewport().rect().center())
+            viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
+            scene_rect = self.scene().sceneRect()
+            
+            # ビューポートがシーンレクトからはみ出ているか確認
+            is_viewport_inside_x = (viewport_rect.left() >= scene_rect.left() and 
+                                   viewport_rect.right() <= scene_rect.right())
+            is_viewport_inside_y = (viewport_rect.top() >= scene_rect.top() and 
+                                   viewport_rect.bottom() <= scene_rect.bottom())
+            
+            logger.debug(f"パン操作: 中心位置=({center.x():.1f}, {center.y():.1f})") 
+            logger.debug(f"ビューポート境界: ({viewport_rect.left():.1f}, {viewport_rect.top():.1f}, {viewport_rect.width():.1f}, {viewport_rect.height():.1f})")
+            logger.debug(f"シーンレクト境界: ({scene_rect.left():.1f}, {scene_rect.top():.1f}, {scene_rect.width():.1f}, {scene_rect.height():.1f})")
+            logger.debug(f"ビューポート位置: X方向内={is_viewport_inside_x}, Y方向内={is_viewport_inside_y}") 

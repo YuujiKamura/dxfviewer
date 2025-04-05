@@ -12,7 +12,6 @@ import sys
 import math
 import os
 import logging
-import json
 from pathlib import Path
 
 # 親ディレクトリをパスに追加
@@ -525,6 +524,7 @@ class TriangleManagerWindow(QMainWindow):
         self.triangle_list = []
         self.selected_parent_number = -1
         self.selected_side_index = -1
+        self.next_triangle_number = 1  # 次の三角形番号の初期化
         
         # 最初の三角形を作成
         self.reset_all()
@@ -595,10 +595,10 @@ class TriangleManagerWindow(QMainWindow):
         self.add_button.clicked.connect(self.add_triangle)
         buttons_layout.addWidget(self.add_button)
         
-        # 三角形書き換えボタン
-        self.update_triangle_button = QPushButton("選択中の三角形を変更")
+        # 更新ボタン
+        self.update_triangle_button = QPushButton("三角形を更新")
         self.update_triangle_button.clicked.connect(self.update_selected_triangle)
-        self.update_triangle_button.setEnabled(False)  # 初期状態では無効
+        self.update_triangle_button.setEnabled(False)  # 初期状態は無効
         buttons_layout.addWidget(self.update_triangle_button)
         
         # リセットボタン
@@ -617,32 +617,23 @@ class TriangleManagerWindow(QMainWindow):
             self.export_dxf_button.clicked.connect(self.export_to_dxf)
             buttons_layout.addWidget(self.export_dxf_button)
         
-        # 元のボタンレイアウトを追加
         input_layout.addLayout(buttons_layout)
-        
-        # JSON保存・読み込みボタンを追加
-        json_buttons_layout = QHBoxLayout()
-        
-        self.save_json_button = QPushButton("JSONに保存")
-        self.save_json_button.clicked.connect(self.save_to_json)
-        json_buttons_layout.addWidget(self.save_json_button)
-        
-        self.load_json_button = QPushButton("JSONから読み込み")
-        self.load_json_button.clicked.connect(self.load_from_json)
-        json_buttons_layout.addWidget(self.load_json_button)
-        
-        input_layout.addLayout(json_buttons_layout)
         
         layout.addWidget(input_group)
         
         return panel
     
     def reset_all(self, create_initial=True):
-        """すべてのデータをリセット"""
+        """すべてのデータをリセット
+        
+        Args:
+            create_initial: 初期三角形を作成するかどうか。Falseの場合はリストのクリアだけ行う。
+        """
         # データのクリア
         self.triangle_list.clear()
         self.selected_parent_number = -1
         self.selected_side_index = -1
+        self.next_triangle_number = 1  # 三角形番号をリセット
         
         # ビューのクリア
         self.view.clear_scene()
@@ -664,6 +655,10 @@ class TriangleManagerWindow(QMainWindow):
         """三角形データを追加して表示"""
         # リストに追加
         self.triangle_list.append(triangle_data)
+        
+        # 次の三角形番号を更新（update_triangle_counter の代わりに直接更新）
+        if triangle_data.number >= self.next_triangle_number:
+            self.next_triangle_number = triangle_data.number + 1
         
         # シーンアイテムの作成
         triangle_item = TriangleItem(triangle_data)
@@ -772,7 +767,7 @@ class TriangleManagerWindow(QMainWindow):
         self.selected_parent_number = triangle_number
         self.selected_side_index = side_index
         
-        # 書き換えボタンを有効化
+        # 更新ボタンを有効化
         self.update_triangle_button.setEnabled(True)
         
         # 表示を更新
@@ -893,7 +888,7 @@ class TriangleManagerWindow(QMainWindow):
         logger.debug(f"接続点: ({connection_point.x():.1f}, {connection_point.y():.1f}), 角度: {connection_angle:.1f}度")
         
         # 新しい三角形番号
-        new_number = len(self.triangle_list) + 1
+        new_number = self.next_triangle_number
         
         # 新しい三角形を作成
         new_triangle = TriangleData(
@@ -914,6 +909,9 @@ class TriangleManagerWindow(QMainWindow):
         
         # 三角形を追加
         self.add_triangle_data(new_triangle)
+        
+        # 三角形カウンターを更新
+        self.update_triangle_counter()
         
         # 選択をクリア
         self.selected_parent_number = -1
@@ -1066,134 +1064,28 @@ class TriangleManagerWindow(QMainWindow):
             logger.error(f"DXF出力エラー: {str(e)}")
             QMessageBox.critical(self, "DXF出力エラー", f"DXFファイルの出力中にエラーが発生しました。\n{str(e)}")
 
-    def save_to_json(self):
-        """三角形データをJSONファイルに保存する"""
-        if not self.triangle_list:
-            QMessageBox.information(self, "JSON保存", "保存する三角形データがありません。")
-            return
-        
-        # 保存ファイル名を取得
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "JSONファイルを保存", "", "JSON Files (*.json)"
-        )
-        
-        if not file_path:
-            return  # ユーザーがキャンセルした場合
-        
-        try:
-            # 三角形データをシリアライズ可能な辞書に変換
-            triangle_dicts = []
-            for triangle in self.triangle_list:
-                triangle_dict = {
-                    'number': triangle.number,
-                    'lengths': triangle.lengths,
-                    'points': [
-                        {'x': p.x(), 'y': p.y()} for p in triangle.points
-                    ],
-                    'angle_deg': triangle.angle_deg,
-                    'connection_side': triangle.connection_side,
-                    'parent_number': triangle.parent.number if triangle.parent else -1,
-                    'children': [
-                        child.number if child else -1 for child in triangle.children
-                    ]
-                }
-                triangle_dicts.append(triangle_dict)
-            
-            # JSONファイルに書き込み
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(triangle_dicts, f, indent=2)
-            
-            self.statusBar().showMessage(f"JSONファイルを保存しました: {file_path}")
-            logger.info(f"{len(self.triangle_list)}個の三角形データをJSONファイルに保存しました: {file_path}")
-            QMessageBox.information(self, "JSON保存", f"三角形データをJSONファイルに保存しました。\n{file_path}")
-        
-        except Exception as e:
-            logger.error(f"JSON保存エラー: {str(e)}")
-            QMessageBox.critical(self, "JSON保存エラー", f"JSONファイルの保存中にエラーが発生しました。\n{str(e)}")
-    
-    def load_from_json(self):
-        """JSONファイルから三角形データを読み込む"""
-        # 読み込みファイル名を取得
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "JSONファイルを開く", "", "JSON Files (*.json)"
-        )
-        
-        if not file_path:
-            return  # ユーザーがキャンセルした場合
-        
-        try:
-            # JSONファイルを読み込み
-            with open(file_path, 'r', encoding='utf-8') as f:
-                triangle_dicts = json.load(f)
-            
-            # 既存のデータをクリア
-            self.reset_all(create_initial=False)  # 初期三角形を作成しない
-            
-            # 三角形データを作成（最初は接続関係なし）
-            triangles = []
-            for triangle_dict in triangle_dicts:
-                # 点をQPointFに変換
-                points = [
-                    QPointF(p['x'], p['y']) for p in triangle_dict['points']
-                ]
-                
-                # 三角形データの作成
-                triangle = TriangleData(
-                    a=triangle_dict['lengths'][0],
-                    b=triangle_dict['lengths'][1],
-                    c=triangle_dict['lengths'][2],
-                    p_ca=points[0],
-                    angle_deg=triangle_dict['angle_deg'],
-                    number=triangle_dict['number']
-                )
-                
-                # 頂点位置を直接設定
-                triangle.points = points
-                
-                triangles.append(triangle)
-            
-            # 親子関係を設定
-            for i, triangle_dict in enumerate(triangle_dicts):
-                # 親の設定
-                parent_number = triangle_dict['parent_number']
-                if parent_number != -1:
-                    # 親三角形を探す
-                    parent = next((t for t in triangles if t.number == parent_number), None)
-                    if parent:
-                        triangles[i].parent = parent
-                        # 親の子として設定
-                        connection_side = triangle_dict['connection_side']
-                        triangles[i].connection_side = connection_side  # 接続辺を設定
-                        if 0 <= connection_side < 3:
-                            parent.children[connection_side] = triangles[i]
-            
-            # 三角形をUIに追加
-            for triangle in triangles:
-                self.add_triangle_data(triangle)
-            
-            # ビューをリセット
-            self.fit_view()
-            
-            self.statusBar().showMessage(f"JSONファイルを読み込みました: {file_path}")
-            logger.info(f"{len(triangles)}個の三角形データをJSONファイルから読み込みました: {file_path}")
-            QMessageBox.information(self, "JSON読み込み", f"三角形データをJSONファイルから読み込みました。\n{file_path}")
-        
-        except Exception as e:
-            logger.error(f"JSON読み込みエラー: {str(e)}")
-            QMessageBox.critical(self, "JSON読み込みエラー", f"JSONファイルの読み込み中にエラーが発生しました。\n{str(e)}")
+    def update_triangle_counter(self):
+        """三角形の番号カウンターを更新"""
+        # 最大の三角形番号を見つけて次の番号を設定
+        max_num = 0
+        for tri in self.triangle_list:
+            if tri.number > max_num:
+                max_num = tri.number
+        self.next_triangle_number = max_num + 1
+        logger.debug(f"三角形カウンター更新: 次の番号 = {self.next_triangle_number}")
 
     def update_selected_triangle(self):
-        """選択中の三角形の辺の長さを変更する"""
+        """選択された三角形の寸法を更新し、子三角形の座標も再計算する"""
         # 選択チェック
         if self.selected_parent_number < 0 or self.selected_side_index < 0:
             QMessageBox.warning(self, "選択エラー", "三角形の辺が選択されていません")
-            return
+            return False
         
-        # 選択された三角形を取得
-        selected_triangle = next((t for t in self.triangle_list if t.number == self.selected_parent_number), None)
-        if not selected_triangle:
+        # 三角形を取得
+        triangle = self.get_triangle_by_number(self.selected_parent_number)
+        if not triangle:
             QMessageBox.warning(self, "エラー", "選択された三角形が見つかりません")
-            return
+            return False
         
         # 新しい辺の長さを取得
         try:
@@ -1201,55 +1093,232 @@ class TriangleManagerWindow(QMainWindow):
             new_len_c = float(self.new_len_c_input.text())
         except ValueError:
             QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
-            return
+            return False
         
-        # 選択された辺のインデックスに応じて処理を分岐
-        if self.selected_side_index == 0:  # 辺A
-            # 辺AはCAからABへの辺。辺Bと辺Cを更新
-            new_lengths = [selected_triangle.lengths[0], new_len_b, new_len_c]
-        elif self.selected_side_index == 1:  # 辺B
-            # 辺BはABからBCへの辺。辺Aと辺Cを更新
-            new_lengths = [new_len_b, selected_triangle.lengths[1], new_len_c]
-        elif self.selected_side_index == 2:  # 辺C
-            # 辺CはBCからCAへの辺。辺Aと辺Bを更新
-            new_lengths = [new_len_b, new_len_c, selected_triangle.lengths[2]]
-        else:
-            QMessageBox.warning(self, "エラー", "無効な辺インデックスです")
-            return
+        # 辺の長さ（選択された辺の長さは変更しない）
+        new_lengths = triangle.lengths.copy()
+        # 選択された辺以外の2辺を更新
+        if self.selected_side_index == 0:
+            new_lengths[1] = new_len_b  # 辺B
+            new_lengths[2] = new_len_c  # 辺C
+        elif self.selected_side_index == 1:
+            new_lengths[0] = new_len_b  # 辺A
+            new_lengths[2] = new_len_c  # 辺C
+        else:  # self.selected_side_index == 2
+            new_lengths[0] = new_len_b  # 辺A
+            new_lengths[1] = new_len_c  # 辺B
         
         # 三角形の成立条件をチェック
-        if not selected_triangle.is_valid_lengths(new_lengths[0], new_lengths[1], new_lengths[2]):
+        if not triangle.is_valid_lengths(new_lengths[0], new_lengths[1], new_lengths[2]):
             QMessageBox.warning(self, "三角形エラー", 
-                             f"指定された辺の長さ ({new_lengths[0]:.1f}, {new_lengths[1]:.1f}, {new_lengths[2]:.1f}) では三角形が成立しません")
-            return
+                                f"指定された辺の長さ({new_lengths[0]:.1f}, {new_lengths[1]:.1f}, {new_lengths[2]:.1f})では三角形が成立しません")
+            return False
         
-        # 元の位置情報を保存
-        original_p_ca = QPointF(selected_triangle.points[0])
-        original_angle = selected_triangle.angle_deg
+        # デバッグログ
+        logger.debug(f"三角形 {triangle.number} を更新: 新しい辺の長さ = {new_lengths}")
         
-        # 辺の長さを更新
-        selected_triangle.lengths = new_lengths
+        # 更新前の座標をログ出力
+        logger.debug(f"更新前の座標 - CA({triangle.points[0].x():.1f}, {triangle.points[0].y():.1f}), "
+                    f"AB({triangle.points[1].x():.1f}, {triangle.points[1].y():.1f}), "
+                    f"BC({triangle.points[2].x():.1f}, {triangle.points[2].y():.1f})")
         
-        # 頂点を再計算
-        selected_triangle.points[0] = original_p_ca  # CA点は変更しない
-        selected_triangle.angle_deg = original_angle  # 角度も維持
-        selected_triangle.calculate_points()
+        # シンプルな座標更新ロジック
+        self.update_triangle_and_propagate(triangle, new_lengths)
         
-        # シーンをクリアして全ての三角形を再描画
-        self.view.clear_scene()
-        for triangle in self.triangle_list:
-            self.add_triangle_data(triangle)
-        
-        # 選択をクリア
-        self.selected_parent_number = -1
-        self.selected_side_index = -1
-        self.selected_info_label.setText("なし")
-        self.update_triangle_button.setEnabled(False)
+        # 三角形アイテムの更新（シーンの再描画）
+        self.refresh_triangle_items()
         
         # ビューを更新
         self.fit_view()
         
-        self.statusBar().showMessage(f"三角形 {selected_triangle.number} の辺を変更しました")
+        self.statusBar().showMessage(f"三角形 {triangle.number} を更新しました")
+        return True
+    
+    def update_triangle_and_propagate(self, triangle, new_lengths):
+        """三角形の寸法を更新し、子三角形に座標変更を伝播する"""
+        # 更新前の子三角形の接続情報を保存
+        children_info = []
+        for i, child in enumerate(triangle.children):
+            if child:
+                children_info.append({
+                    'index': i,
+                    'child': child,
+                    'old_point': QPointF(child.points[0]),
+                    'old_angle': child.angle_deg
+                })
+        
+        # 1. 三角形の寸法と座標を更新
+        triangle.lengths = new_lengths
+        triangle.calculate_points()
+        
+        # 更新後の座標をログ出力
+        logger.debug(f"更新後の座標 - CA({triangle.points[0].x():.1f}, {triangle.points[0].y():.1f}), "
+                    f"AB({triangle.points[1].x():.1f}, {triangle.points[1].y():.1f}), "
+                    f"BC({triangle.points[2].x():.1f}, {triangle.points[2].y():.1f})")
+        
+        # 2. 子三角形の座標を更新
+        for info in children_info:
+            child = info['child']
+            side_index = info['index']
+            
+            # 新しい接続点と角度
+            new_p_ca = triangle.get_connection_point_by_side(side_index)
+            new_angle = triangle.get_angle_by_side(side_index)
+            
+            # 子三角形の更新前情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新前: 基準点=({info['old_point'].x():.1f}, {info['old_point'].y():.1f}), "
+                       f"角度={info['old_angle']:.1f}")
+            
+            # 子三角形の基準点と角度を更新
+            child.p_ca = new_p_ca
+            child.angle_deg = new_angle
+            child.points[0] = new_p_ca
+            
+            # 子三角形の座標を再計算
+            child.calculate_points()
+            
+            # 更新後情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f}), "
+                       f"角度={child.angle_deg:.1f}")
+            
+            # 3. 孫三角形があれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child)
+    
+    def update_child_triangles_recursive(self, parent):
+        """子三角形を再帰的に更新する（シンプルなバージョン）"""
+        for side_index, child in enumerate(parent.children):
+            if not child:
+                continue
+                
+            # 新しい接続点と角度
+            new_p_ca = parent.get_connection_point_by_side(side_index)
+            new_angle = parent.get_angle_by_side(side_index)
+            
+            # 接続点の更新前後をログ出力
+            logger.debug(f"孫三角形 {child.number} 更新前: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # 子三角形の基準点と角度を更新
+            child.p_ca = new_p_ca
+            child.angle_deg = new_angle
+            child.points[0] = new_p_ca
+            
+            # 座標を再計算
+            child.calculate_points()
+            
+            logger.debug(f"孫三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # さらに子がいれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child)
+    
+    def refresh_triangle_items(self):
+        """すべての三角形アイテムを再構築"""
+        # シーンをクリア
+        self.view.scene().clear()
+        
+        # 三角形アイテムを再作成
+        for triangle in self.triangle_list:
+            # シーンアイテムの作成
+            triangle_item = TriangleItem(triangle)
+            self.view.scene().addItem(triangle_item)
+            
+            # 辺クリックシグナルの接続
+            triangle_item.signalHelper.sideClicked.connect(self.handle_side_clicked)
+            
+            # 寸法テキストとその背景をシーンに追加
+            for dim_info in triangle_item.dimension_items:
+                text = dim_info['text']
+                bg = dim_info['bg']
+                mid_x = dim_info['mid_x']
+                mid_y = dim_info['mid_y']
+                angle = dim_info['angle']
+                
+                # 現在のフォントサイズで更新
+                font = text.font()
+                font.setPointSize(self.dimension_font_size)
+                text.setFont(font)
+                
+                # テキストサイズ変更に伴い背景サイズも調整
+                text_rect = text.boundingRect()
+                bg.setRect(text_rect)
+                
+                # 描画原点を示す青いドット（サイズを半分に）
+                origin_dot = QGraphicsEllipseItem(-1, -1, 2, 2)
+                origin_dot.setBrush(QColor(0, 0, 255))  # 青色
+                origin_dot.setPen(QPen(Qt.NoPen))
+                
+                # ZValueを設定（背景が最背面、テキストが中間、青ドットが最前面）
+                bg.setZValue(0)  # 最背面
+                text.setZValue(1)  # 中間
+                origin_dot.setZValue(2)  # 最前面
+                
+                # シーンに追加（背景を最初に追加して最背面に）
+                self.view.scene().addItem(bg)
+                self.view.scene().addItem(text)
+                self.view.scene().addItem(origin_dot)
+                
+                # 辺上の変形行列を作成（テキスト位置の基準となる）
+                edge_transform = QTransform()
+                edge_transform.translate(mid_x, mid_y)
+                
+                # 辺の角度に合わせて回転
+                if 90 <= angle <= 270:
+                    edge_transform.rotate(angle + 180)
+                else:
+                    edge_transform.rotate(angle)
+                
+                # 青ドットは辺上に配置（オフセットなし）
+                origin_dot.setTransform(edge_transform)
+                
+                # テキスト用の変形行列（辺から少し離す）
+                text_transform = QTransform(edge_transform)
+                text_transform.translate(0, 1)
+                
+                # 中央揃えになるよう調整
+                text_rect = text.boundingRect()
+                # 背景も同じサイズに更新
+                bg.setRect(text_rect)
+                
+                # テキストと背景を正確に中央揃えするための位置調整
+                bg_transform = QTransform(text_transform)
+                
+                # テキストの中心が原点に来るよう調整（左右は中央揃え、上下は上揃えに）
+                text_transform.translate(-text_rect.width()/2, 0)
+                bg_transform.translate(-text_rect.width()/2, 0)
+                
+                # 変形を適用
+                text.setTransform(text_transform)
+                bg.setTransform(bg_transform)
+            
+            # ラベルの追加（三角形番号表示）
+            label = QGraphicsTextItem(str(triangle.number))
+            # テキストを中央揃えに
+            document = label.document()
+            document.setDefaultTextOption(QTextOption(Qt.AlignCenter))
+            
+            # テキストの位置を調整（重心に配置）
+            rect = label.boundingRect()
+            label.setPos(
+                triangle.center_point.x() - rect.width() / 2,
+                triangle.center_point.y() - rect.height() / 2
+            )
+            
+            # テキストのフォントと色を調整
+            font = label.font()
+            font.setBold(True)
+            font.setPointSize(10)
+            label.setFont(font)
+            label.setDefaultTextColor(QColor(0, 0, 0))
+            
+            self.view.scene().addItem(label)
+        
+        # シーンとビューを更新
+        self.view.update()
+    
+    def get_triangle_by_number(self, number):
+        """番号から三角形を取得"""
+        return next((t for t in self.triangle_list if t.number == number), None)
 
 def main():
     """メイン関数"""
