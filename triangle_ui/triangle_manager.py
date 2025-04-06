@@ -647,17 +647,24 @@ class TriangleManagerWindow(QMainWindow):
         input_group = QWidget()
         input_layout = QVBoxLayout(input_group)
         
-        # 辺の長さ入力
+        # 辺の長さ入力 - 3つの入力欄を並べるように変更
         lengths_layout = QHBoxLayout()
         
-        # 辺B（親三角形との接続辺の反対）の長さ
+        # 辺A
+        lengths_layout.addWidget(QLabel("辺A:"))
+        self.new_len_a_input = QLineEdit()
+        self.new_len_a_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
+        self.new_len_a_input.setText("100.0")
+        lengths_layout.addWidget(self.new_len_a_input)
+        
+        # 辺B
         lengths_layout.addWidget(QLabel("辺B:"))
         self.new_len_b_input = QLineEdit()
         self.new_len_b_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
         self.new_len_b_input.setText("80.0")
         lengths_layout.addWidget(self.new_len_b_input)
         
-        # 辺C（もう一方の辺）の長さ
+        # 辺C
         lengths_layout.addWidget(QLabel("辺C:"))
         self.new_len_c_input = QLineEdit()
         self.new_len_c_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
@@ -841,66 +848,28 @@ class TriangleManagerWindow(QMainWindow):
         self.view.initialize_view()
     
     def handle_side_clicked(self, triangle_number, side_index):
-        """三角形の辺がクリックされた時の処理"""
-        # 選択情報を更新
+        """三角形の辺がクリックされたときの処理"""
+        # 選択情報を保存
         self.selected_parent_number = triangle_number
         self.selected_side_index = side_index
+        
+        # 選択された三角形を取得
+        triangle = self.get_triangle_by_number(triangle_number)
+        if not triangle:
+            return
+        
+        # 選択情報を表示
+        self.selected_info_label.setText(f"三角形 {triangle_number} の辺 {chr(65 + side_index)}")
+        
+        # 入力欄に現在の値をセット
+        self.new_len_a_input.setText(f"{triangle.lengths[0]:.1f}")
+        self.new_len_b_input.setText(f"{triangle.lengths[1]:.1f}")
+        self.new_len_c_input.setText(f"{triangle.lengths[2]:.1f}")
         
         # 更新ボタンを有効化
         self.update_triangle_button.setEnabled(True)
         
-        # 表示を更新
-        triangle = next((t for t in self.triangle_list if t.number == triangle_number), None)
-        if triangle:
-            # 辺の表示名マッピング（インデックスから名前へ）
-            edge_name_mapping = {
-                0: "A",  # インデックス0 → 辺A (CA→AB)
-                1: "B",  # インデックス1 → 辺B (AB→BC)
-                2: "C"   # インデックス2 → 辺C (BC→CA)
-            }
-            edge_name = edge_name_mapping[side_index]
-            
-            self.selected_info_label.setText(f"三角形 {triangle_number} の辺 {edge_name}")
-            
-            # ステータスバーに選択情報を表示
-            # 辺の両端点を直接頂点配列から取得
-            # 頂点インデックスマッピング
-            edge_points_mapping = {
-                0: (0, 1),  # 辺A: CA→AB
-                1: (1, 2),  # 辺B: AB→BC
-                2: (2, 0)   # 辺C: BC→CA
-            }
-            start_idx, end_idx = edge_points_mapping[side_index]
-            p1 = triangle.points[start_idx]
-            p2 = triangle.points[end_idx]
-            edge_length = triangle.lengths[side_index]
-            
-            # 頂点名マッピング（辺のインデックスから頂点の名前ペアへ）
-            edge_vertices_mapping = {
-                0: ("CA", "AB"),  # 辺A
-                1: ("AB", "BC"),  # 辺B
-                2: ("BC", "CA")   # 辺C
-            }
-            start_vertex, end_vertex = edge_vertices_mapping[side_index]
-            
-            # より詳細な情報をステータスバーに表示
-            self.statusBar().showMessage(
-                f"三角形 {triangle_number} の辺 {edge_name}: "
-                f"{start_vertex}({p1.x():.1f}, {p1.y():.1f}) → "
-                f"{end_vertex}({p2.x():.1f}, {p2.y():.1f}), "
-                f"長さ: {edge_length:.1f}"
-            )
-            
-            # 選択された辺をハイライト
-            # まず、すべての三角形の選択をクリア
-            for item in self.view.scene().items():
-                if isinstance(item, TriangleItem):
-                    if item.triangle_data.number == triangle_number:
-                        # 選択された三角形の辺をハイライト
-                        item.highlight_selected_side(side_index)
-                    else:
-                        # 他の三角形の選択をクリア
-                        item.highlight_selected_side(None)
+        self.statusBar().showMessage(f"三角形 {triangle_number} の辺 {chr(65 + side_index)} を選択しました")
     
     def add_triangle(self):
         """選択された辺に新しい三角形を追加"""
@@ -925,14 +894,12 @@ class TriangleManagerWindow(QMainWindow):
         
         # 新しい辺の長さを取得
         try:
+            len_a = float(self.new_len_a_input.text())
             len_b = float(self.new_len_b_input.text())
             len_c = float(self.new_len_c_input.text())
         except ValueError:
             QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
             return
-        
-        # 辺の長さ（親の辺の長さを新しい三角形の辺Aとして使用）
-        len_a = parent_triangle.lengths[self.selected_side_index]
         
         # デバッグログ - 辺の長さ
         logger.debug(f"新しい三角形の辺の長さ: A={len_a:.1f}, B={len_b:.1f}, C={len_c:.1f}")
@@ -1166,26 +1133,17 @@ class TriangleManagerWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", "選択された三角形が見つかりません")
             return False
         
-        # 新しい辺の長さを取得
+        # 新しい辺の長さを取得 - 3つすべての入力を使用
         try:
+            new_len_a = float(self.new_len_a_input.text())
             new_len_b = float(self.new_len_b_input.text())
             new_len_c = float(self.new_len_c_input.text())
         except ValueError:
             QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
             return False
         
-        # 辺の長さ（選択された辺の長さは変更しない）
-        new_lengths = triangle.lengths.copy()
-        # 選択された辺以外の2辺を更新
-        if self.selected_side_index == 0:
-            new_lengths[1] = new_len_b  # 辺B
-            new_lengths[2] = new_len_c  # 辺C
-        elif self.selected_side_index == 1:
-            new_lengths[0] = new_len_b  # 辺A
-            new_lengths[2] = new_len_c  # 辺C
-        else:  # self.selected_side_index == 2
-            new_lengths[0] = new_len_b  # 辺A
-            new_lengths[1] = new_len_c  # 辺B
+        # 3つすべての辺の長さを直接設定
+        new_lengths = [new_len_a, new_len_b, new_len_c]
         
         # 三角形の成立条件をチェック
         if not triangle.is_valid_lengths(new_lengths[0], new_lengths[1], new_lengths[2]):
