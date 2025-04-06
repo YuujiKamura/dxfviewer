@@ -690,7 +690,7 @@ class TriangleManagerWindow(QMainWindow):
         buttons_layout.addWidget(self.update_triangle_button)
         
         # リセットボタン
-        reset_button = QPushButton("リセット")
+        reset_button = QPushButton("ビューリセット")
         reset_button.clicked.connect(self.reset_all)
         buttons_layout.addWidget(reset_button)
         
@@ -737,7 +737,7 @@ class TriangleManagerWindow(QMainWindow):
         # ビューをリセット
         self.fit_view()
         
-        self.statusBar().showMessage("リセットしました")
+        self.statusBar().showMessage("ビューをリセットしました")
     
     def add_triangle_data(self, triangle_data: TriangleData):
         """三角形データを追加して表示"""
@@ -1434,24 +1434,88 @@ class TriangleManagerWindow(QMainWindow):
         clicked_items = self.view.scene().items(event.scenePos())
         
         if clicked_items:
+            # デバッグ情報を出力
+            logging.debug(f"クリックされたアイテム数: {len(clicked_items)}")
+            
             # 寸法テキストや背景がクリックされたかチェック
-            for item in clicked_items:
-                if (isinstance(item, QGraphicsSimpleTextItem) or isinstance(item, QGraphicsRectItem)) and item.data(0) is not None:
+            for i, item in enumerate(clicked_items):
+                # デバッグ出力
+                if i < 3:  # 最初の数個のアイテムについてのみログ出力
+                    data0 = item.data(0)
+                    data1 = item.data(1)
+                    item_type = type(item).__name__
+                    has_data0 = data0 is not None
+                    has_data1 = data1 is not None
+                    logging.debug(f"アイテム[{i}]: タイプ={item_type}, data(0)={data0}, data(1)={data1}, データあり={has_data0}/{has_data1}")
+                
+                if isinstance(item, QGraphicsSimpleTextItem) and item.data(0) is not None:
                     # 三角形番号と辺インデックスを取得
-                    triangle_number = item.data(1)
                     side_index = item.data(0)
+                    triangle_info = item.data(1)
                     
-                    if triangle_number is not None and side_index is not None:
-                        # 辺を選択状態にする
-                        self.handle_side_clicked(triangle_number, side_index)
-                        event.accept()
-                        return
+                    if triangle_info is not None and side_index is not None:
+                        # 三角形の情報から、対応する三角形の番号を見つける
+                        triangle_number = self.find_triangle_by_info(triangle_info)
+                        
+                        if triangle_number is not None:
+                            # デバッグ出力
+                            logging.debug(f"寸法テキスト/背景クリック: 三角形={triangle_info}, 辺={side_index}")
+                            # 辺を選択状態にする
+                            logging.debug(f"選択処理を実行: 三角形 {triangle_info} の辺 {side_index}")
+                            self.handle_side_clicked(triangle_number, side_index)
+                            event.accept()
+                            return
+                elif isinstance(item, QGraphicsRectItem) and item.data(0) is not None:
+                    # QGraphicsRectItemは異なるデータ構造を持っている可能性がある
+                    # 直接辺と三角形の情報を取得できるか試みる
+                    text_item = item.data(0)
+                    triangle_number = item.data(1)
+                    
+                    # text_itemがQGraphicsSimpleTextItemかチェック
+                    if isinstance(text_item, QGraphicsSimpleTextItem) and triangle_number is not None:
+                        side_index = text_item.data(0)
+                        if side_index is not None:
+                            # デバッグ出力
+                            logging.debug(f"寸法テキストの背景クリック: 三角形={triangle_number}, 辺={side_index}")
+                            # 辺を選択状態にする
+                            logging.debug(f"選択処理を実行: 三角形 {triangle_number} の辺 {side_index}")
+                            self.handle_side_clicked(triangle_number, side_index)
+                            event.accept()
+                            return
         else:
             # 背景クリック - すべての選択をクリア
+            logging.debug("背景クリック: すべての選択をクリア")
             self.clear_all_highlights()
         
         # 親クラスの処理を呼び出す
         QGraphicsScene.mouseReleaseEvent(self.view.scene(), event)
+
+    def find_triangle_by_info(self, triangle_info):
+        """三角形情報から三角形番号を見つける"""
+        # triangle_infoが整数の場合、そのまま返す（すでに三角形番号）
+        if isinstance(triangle_info, int):
+            return triangle_info
+        
+        # triangle_infoが辞書でない場合、処理できない
+        if not isinstance(triangle_info, dict):
+            logging.debug(f"三角形情報が辞書形式ではありません: {type(triangle_info)}")
+            return None
+        
+        # 主要な情報（角度と中心点）を使用して一致する三角形を検索
+        for i, triangle in enumerate(self.triangle_list):
+            if triangle and i > 0:  # インデックス0は未使用なので1からスタート
+                # 三角形の中心点と角度を取得
+                angle = triangle.angle_deg
+                mid_x = (triangle.points[0].x() + triangle.points[1].x() + triangle.points[2].x()) / 3
+                mid_y = (triangle.points[0].y() + triangle.points[1].y() + triangle.points[2].y()) / 3
+                
+                # 数値の比較は許容誤差を考慮する
+                if (abs(angle - triangle_info.get('angle', 0)) < 0.001 and
+                    abs(mid_x - triangle_info.get('mid_x', 0)) < 0.001 and
+                    abs(mid_y - triangle_info.get('mid_y', 0)) < 0.001):
+                    return i
+        
+        return None
 
 def main():
     """メイン関数"""
