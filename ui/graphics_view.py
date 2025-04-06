@@ -132,9 +132,9 @@ class DxfGraphicsView(QGraphicsView):
         if self.current_zoom < 0.01:
             factor = 0.01 / (self.current_zoom / factor)
             self.current_zoom = 0.01
-        elif self.current_zoom > 100.0:
-            factor = 100.0 / (self.current_zoom / factor)
-            self.current_zoom = 100.0
+        elif self.current_zoom > 1000.0:
+            factor = 1000.0 / (self.current_zoom / factor)
+            self.current_zoom = 1000.0
             
         # マウス位置を中心にしてビューをスケーリング
         self.scale(factor, factor)

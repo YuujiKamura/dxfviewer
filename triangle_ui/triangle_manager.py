@@ -608,7 +608,8 @@ class TriangleManagerWindow(QMainWindow):
         self.next_triangle_number = 1  # 次の三角形番号の初期化
         
         # 最初の三角形を作成
-        self.reset_all()
+        initial_triangle = TriangleData(100.0, 100.0, 100.0, QPointF(0, 0), 180.0, 1)
+        self.add_triangle_data(initial_triangle)
         
         # 三角形選択コンボボックスを更新
         self.update_triangle_combo()
@@ -713,14 +714,14 @@ class TriangleManagerWindow(QMainWindow):
         buttons_layout.addWidget(self.update_triangle_button)
         
         # リセットボタン
-        reset_button = QPushButton("ビューリセット")
-        reset_button.clicked.connect(self.reset_all)
-        buttons_layout.addWidget(reset_button)
+        # ボタン削除：リセット
+        
+        
         
         # 全体表示ボタン
-        fit_button = QPushButton("全体表示")
-        fit_button.clicked.connect(self.fit_view)
-        buttons_layout.addWidget(fit_button)
+        # ボタン削除：全体表示
+        
+        
         
         # DXF出力ボタンを追加
         if HAS_EZDXF:
@@ -734,39 +735,7 @@ class TriangleManagerWindow(QMainWindow):
         
         return panel
     
-    def reset_all(self, create_initial=True):
-        """すべてのデータをリセット
-        
-        Args:
-            create_initial: 初期三角形を作成するかどうか。Falseの場合はリストのクリアだけ行う。
-        """
-        # データのクリア
-        self.triangle_list.clear()
-        self.selected_parent_number = -1
-        self.selected_side_index = -1
-        self.next_triangle_number = 1  # 三角形番号をリセット
-        
-        # コンボボックスをクリア
-        self.triangle_combo.blockSignals(True)
-        self.triangle_combo.clear()
-        self.triangle_combo.addItem("---", -1)
-        self.triangle_combo.blockSignals(False)
-        
-        # ビューのクリア
-        self.view.clear_scene()
-        
-        # 最初の三角形を作成（オプション）
-        if create_initial:
-            initial_triangle = TriangleData(100.0, 100.0, 100.0, QPointF(0, 0), 180.0, 1)
-            self.add_triangle_data(initial_triangle)
-        
-        # 選択情報をリセット
-        self.selected_info_label.setText("なし")
-        
-        # ビューをリセット
-        self.fit_view()
-        
-        self.statusBar().showMessage("ビューをリセットしました")
+    # メソッド削除: reset_all
     
     def add_triangle_data(self, triangle_data: TriangleData):
         """三角形データを追加して表示"""
@@ -1063,13 +1032,11 @@ class TriangleManagerWindow(QMainWindow):
         self.selected_info_label.setText("なし")
         
         # ビューを全体表示に更新
-        self.fit_view()
+        self.view.fit_scene_in_view()
         
         self.statusBar().showMessage(f"三角形 {new_number} を追加しました")
     
-    def fit_view(self):
-        """ビューを全ての三角形が見える大きさに調整"""
-        self.view.fit_scene_in_view()
+    # メソッド削除: fit_view
     
     def update_dimension_font_size(self, size):
         """寸法テキストのフォントサイズを更新"""
@@ -1264,7 +1231,7 @@ class TriangleManagerWindow(QMainWindow):
         self.refresh_triangle_items()
         
         # ビューを更新
-        self.fit_view()
+        self.view.fit_scene_in_view()
         
         self.statusBar().showMessage(f"三角形 {triangle.number} を更新しました")
         return True
