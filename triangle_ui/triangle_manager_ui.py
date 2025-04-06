@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QMessageBox, 
     QComboBox, QFileDialog, QFrame, QStatusBar,
-    QGraphicsScene, QGraphicsTextItem, QGraphicsSimpleTextItem, QSizePolicy
+    QGraphicsScene, QGraphicsTextItem, QGraphicsSimpleTextItem, QSizePolicy,
+    QApplication
 )
 from PySide6.QtGui import QPainter, QColor, QDoubleValidator, QPen
 from PySide6.QtCore import Qt, QPointF
@@ -31,6 +32,7 @@ from .triangle_data import TriangleData, TriangleManager
 from .triangle_exporters import DxfExporter
 from .triangle_io import JsonIO
 from .triangle_graphics_item import TriangleItem, add_triangle_item_to_scene
+from .triangle_ui_controls import TriangleControlPanel
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -94,11 +96,11 @@ class UIConstants:
 class TriangleManagerWindow(QMainWindow):
     """三角形管理UIのメインウィンドウ"""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         
-        # UIデザイン定数を適用
-        self.dimension_font_size = UIConstants.DIMENSION_FONT_SIZE
+        # フォントサイズ
+        self.dimension_font_size = 6
         
         # ウィンドウの設定
         self.setWindowTitle("Triangle Manager")
@@ -119,7 +121,8 @@ class TriangleManagerWindow(QMainWindow):
         self.view.scene().mouseReleaseEvent = self.scene_mouse_release_event
         
         # コントロールパネルの作成
-        self.control_panel = self.create_control_panel()
+        self.control_panel = TriangleControlPanel()
+        self.connect_control_signals()
         main_layout.addWidget(self.control_panel)
         
         # ステータスバーの設定
@@ -139,122 +142,15 @@ class TriangleManagerWindow(QMainWindow):
         # 三角形選択コンボボックスを更新
         self.update_triangle_combo()
     
-    def create_control_panel(self):
-        """コントロールパネルを作成"""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        
-        # 情報表示部分
-        info_group = QWidget()
-        info_layout = QVBoxLayout(info_group)
-        
-        # 選択情報
-        selection_layout = QHBoxLayout()
-        # 選択中ラベルを作成し、固定幅を設定
-        selection_label = QLabel("選択中:")
-        selection_label.setFixedWidth(70)  # 固定幅を設定
-        selection_layout.addWidget(selection_label)
-        
-        self.selected_info_label = QLabel("なし")
-        # 水平方向のポリシーを設定
-        self.selected_info_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        selection_layout.addWidget(self.selected_info_label)
-        # 余分なスペースを追加しない
-        selection_layout.setStretch(0, 0)  # 選択中ラベルは固定
-        selection_layout.setStretch(1, 1)  # 内容ラベルは拡張可能
-        info_layout.addLayout(selection_layout)
-        
-        layout.addWidget(info_group)
-        
-        # 入力部分
-        input_group = QWidget()
-        input_layout = QVBoxLayout(input_group)
-        
-        # 辺の長さ入力 - 3つの入力欄を並べるように変更
-        lengths_layout = QHBoxLayout()
-        
-        # 三角形選択コンボボックス（左側に配置）
-        lengths_layout.addWidget(QLabel("三角形選択:"))
-        self.triangle_combo = QComboBox()
-        self.triangle_combo.setMinimumWidth(100)
-        self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
-        self.triangle_combo.currentIndexChanged.connect(self.on_triangle_selected)
-        
-        # フォントサイズを設定
-        font = self.triangle_combo.font()
-        font.setPointSize(15)  # UIConstants.INPUT_FONT_SIZEの値
-        self.triangle_combo.setFont(font)
-        
-        lengths_layout.addWidget(self.triangle_combo)
-        
-        # 横方向のスペーサーを追加（縦の区切り線を追加）
-        vertical_line = QFrame()
-        vertical_line.setFrameShape(QFrame.VLine)
-        vertical_line.setFrameShadow(QFrame.Sunken)
-        lengths_layout.addWidget(vertical_line)
-        
-        # 辺A
-        lengths_layout.addWidget(QLabel("辺A:"))
-        self.new_len_a_input = QLineEdit()
-        self.new_len_a_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
-        self.new_len_a_input.setText("100.0")
-        lengths_layout.addWidget(self.new_len_a_input)
-        
-        # 辺B
-        lengths_layout.addWidget(QLabel("辺B:"))
-        self.new_len_b_input = QLineEdit()
-        self.new_len_b_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
-        self.new_len_b_input.setText("80.0")
-        lengths_layout.addWidget(self.new_len_b_input)
-        
-        # 辺C
-        lengths_layout.addWidget(QLabel("辺C:"))
-        self.new_len_c_input = QLineEdit()
-        self.new_len_c_input.setValidator(QDoubleValidator(0.1, 9999.9, 1))
-        self.new_len_c_input.setText("80.0")
-        lengths_layout.addWidget(self.new_len_c_input)
-        
-        input_layout.addLayout(lengths_layout)
-        
-        # ボタン
-        buttons_layout = QHBoxLayout()
-        
-        # 追加ボタン
-        self.add_button = QPushButton("三角形を追加")
-        self.add_button.clicked.connect(self.on_add_triangle)
-        buttons_layout.addWidget(self.add_button)
-        
-        # 更新ボタン
-        self.update_triangle_button = QPushButton("三角形を更新")
-        self.update_triangle_button.clicked.connect(self.on_update_triangle)
-        self.update_triangle_button.setEnabled(False)  # 初期状態は無効
-        buttons_layout.addWidget(self.update_triangle_button)
-        
-        # DXF出力ボタン
-        self.export_dxf_button = QPushButton("DXF出力")
-        self.export_dxf_button.clicked.connect(self.on_export_dxf)
-        buttons_layout.addWidget(self.export_dxf_button)
-        
-        input_layout.addLayout(buttons_layout)
-        
-        # JSON保存/読み込みボタンを追加
-        json_buttons_layout = QHBoxLayout()
-        
-        # JSON保存ボタン
-        self.save_json_button = QPushButton("JSON保存")
-        self.save_json_button.clicked.connect(self.on_save_json)
-        json_buttons_layout.addWidget(self.save_json_button)
-        
-        # JSON読み込みボタン
-        self.load_json_button = QPushButton("JSON読み込み")
-        self.load_json_button.clicked.connect(self.on_load_json)
-        json_buttons_layout.addWidget(self.load_json_button)
-        
-        input_layout.addLayout(json_buttons_layout)
-        
-        layout.addWidget(input_group)
-        
-        return panel
+    def connect_control_signals(self):
+        """コントロールパネルのシグナルを接続"""
+        signals = self.control_panel.signals
+        signals.triangleSelected.connect(self.on_triangle_selected)
+        signals.addTriangleClicked.connect(self.on_add_triangle)
+        signals.updateTriangleClicked.connect(self.on_update_triangle)
+        signals.exportDxfClicked.connect(self.on_export_dxf)
+        signals.saveJsonClicked.connect(self.on_save_json)
+        signals.loadJsonClicked.connect(self.on_load_json)
     
     def add_triangle(self, triangle_data):
         """三角形を追加してUIに表示"""
@@ -285,13 +181,12 @@ class TriangleManagerWindow(QMainWindow):
             return
         
         # 新しい辺の長さを取得
-        try:
-            len_a = float(self.new_len_a_input.text())
-            len_b = float(self.new_len_b_input.text())
-            len_c = float(self.new_len_c_input.text())
-        except ValueError:
+        length_values = self.control_panel.get_length_values()
+        if length_values is None:
             QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
             return
+        
+        len_a, len_b, len_c = length_values
         
         # 三角形マネージャーを使って新しい三角形を作成
         new_triangle = self.triangle_manager.create_triangle_at_side(
@@ -339,13 +234,12 @@ class TriangleManagerWindow(QMainWindow):
             return
         
         # 新しい辺の長さを取得
-        try:
-            len_a = float(self.new_len_a_input.text())
-            len_b = float(self.new_len_b_input.text())
-            len_c = float(self.new_len_c_input.text())
-        except ValueError:
+        length_values = self.control_panel.get_length_values()
+        if length_values is None:
             QMessageBox.warning(self, "入力エラー", "辺の長さには有効な数値を入力してください")
             return
+        
+        len_a, len_b, len_c = length_values
         
         # 三角形を更新
         if self.triangle_manager.update_triangle_and_propagate(triangle, [len_a, len_b, len_c]):
@@ -473,32 +367,31 @@ class TriangleManagerWindow(QMainWindow):
     def update_triangle_combo(self):
         """三角形選択コンボボックスを更新"""
         # 現在の選択を保存
-        current_selection = self.triangle_combo.currentData()
+        current_selection = self.control_panel.get_triangle_combo().currentData()
         
         # コンボボックスをクリア
-        self.triangle_combo.blockSignals(True)  # シグナルを一時停止
-        self.triangle_combo.clear()
-        self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
+        self.control_panel.get_triangle_combo().blockSignals(True)  # シグナルを一時停止
+        self.control_panel.clear_triangle_combo()
         
         # 三角形リストを反復処理
         for triangle in sorted(self.triangle_manager.triangle_list, key=lambda t: t.number):
             if triangle.number > 0:  # 有効な三角形番号のみ
-                self.triangle_combo.addItem(f"三角形 {triangle.number}", triangle.number)
+                self.control_panel.add_triangle_to_combo(triangle.number)
         
         # 前の選択を復元（可能な場合）
         if current_selection != -1:
-            index = self.triangle_combo.findData(current_selection)
+            index = self.control_panel.find_triangle_combo_data(current_selection)
             if index >= 0:
-                self.triangle_combo.setCurrentIndex(index)
+                self.control_panel.set_triangle_combo_index(index)
             else:
-                self.triangle_combo.setCurrentIndex(0)  # デフォルト選択
+                self.control_panel.set_triangle_combo_index(0)  # デフォルト選択
         
-        self.triangle_combo.blockSignals(False)  # シグナルを再開
+        self.control_panel.get_triangle_combo().blockSignals(False)  # シグナルを再開
     
     def on_triangle_selected(self, index):
         """コンボボックスから三角形が選択されたとき"""
         # 選択された三角形番号を取得
-        triangle_number = self.triangle_combo.currentData()
+        triangle_number = self.control_panel.get_triangle_combo().currentData()
         
         # 無効な選択の場合は何もしない
         if triangle_number == -1:
@@ -514,15 +407,17 @@ class TriangleManagerWindow(QMainWindow):
         self.selected_side_index = -1  # 辺は選択されていない
         
         # 三角形の情報をフォームに反映
-        self.new_len_a_input.setText(f"{triangle.lengths[0]:.1f}")
-        self.new_len_b_input.setText(f"{triangle.lengths[1]:.1f}")
-        self.new_len_c_input.setText(f"{triangle.lengths[2]:.1f}")
+        self.control_panel.set_length_values(
+            triangle.lengths[0],
+            triangle.lengths[1],
+            triangle.lengths[2]
+        )
         
         # 選択情報を表示
-        self.selected_info_label.setText(f"三角形 {triangle_number}")
+        self.control_panel.set_selected_info(f"三角形 {triangle_number}")
         
         # 更新ボタンを有効化
-        self.update_triangle_button.setEnabled(True)
+        self.control_panel.enable_update_button(True)
         
         # シーン内の三角形の表示を更新
         self.highlight_triangle(triangle_number)
@@ -561,22 +456,22 @@ class TriangleManagerWindow(QMainWindow):
             return
         
         # 選択情報を表示
-        self.selected_info_label.setText(f"三角形 {triangle_number} の辺 {chr(65 + side_index)}")
+        self.control_panel.set_selected_info(f"三角形 {triangle_number} の辺 {chr(65 + side_index)}")
         
         # 入力欄に現在の値をセット
-        self.new_len_a_input.setText(f"{triangle.lengths[0]:.1f}")
-        self.new_len_b_input.setText(f"{triangle.lengths[1]:.1f}")
-        self.new_len_c_input.setText(f"{triangle.lengths[2]:.1f}")
+        self.control_panel.set_length_values(
+            triangle.lengths[0],
+            triangle.lengths[1],
+            triangle.lengths[2]
+        )
         
         # 更新ボタンを有効化
-        self.update_triangle_button.setEnabled(True)
+        self.control_panel.enable_update_button(True)
         
         # コンボボックスの選択も更新
-        self.triangle_combo.blockSignals(True)
-        index = self.triangle_combo.findData(triangle_number)
-        if index >= 0:
-            self.triangle_combo.setCurrentIndex(index)
-        self.triangle_combo.blockSignals(False)
+        combo_index = self.control_panel.find_triangle_combo_data(triangle_number)
+        if combo_index >= 0:
+            self.control_panel.set_triangle_combo_index(combo_index, block_signals=True)
         
         # 選択された辺をハイライト
         for item in self.view.scene().items():
@@ -607,13 +502,11 @@ class TriangleManagerWindow(QMainWindow):
         # 内部の選択状態をリセット
         self.selected_parent_number = -1
         self.selected_side_index = -1
-        self.selected_info_label.setText("なし")
-        self.update_triangle_button.setEnabled(False)
+        self.control_panel.set_selected_info("なし")
+        self.control_panel.enable_update_button(False)
         
         # コンボボックスの選択をリセット
-        self.triangle_combo.blockSignals(True)
-        self.triangle_combo.setCurrentIndex(0)  # "---" を選択
-        self.triangle_combo.blockSignals(False)
+        self.control_panel.set_triangle_combo_index(0, block_signals=True)
         
         # ステータスバーをクリア
         self.statusBar().showMessage("選択をクリアしました")
@@ -633,9 +526,9 @@ class TriangleManagerWindow(QMainWindow):
                     # 三角形番号のテキストアイテム
                     if isinstance(item, QGraphicsTextItem):
                         logging.debug(f"三角形番号 {triangle_number} をクリック")
-                        index = self.triangle_combo.findData(triangle_number)
+                        index = self.control_panel.find_triangle_combo_data(triangle_number)
                         if index >= 0:
-                            self.triangle_combo.setCurrentIndex(index)  # コンボボックスの選択を変更
+                            self.control_panel.set_triangle_combo_index(index)  # コンボボックスの選択を変更
                         return
                 
                 # 寸法テキストのクリック
