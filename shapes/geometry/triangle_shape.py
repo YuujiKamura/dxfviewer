@@ -352,3 +352,154 @@ class TriangleData(BaseShape):
             logger.debug(f"Triangle {self.number}の辺{side_index}に子三角形{child_triangle.number}を接続しました")
         else:
             logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}") 
+
+class TriangleManager:
+    """三角形の集合を管理するクラス"""
+    
+    def __init__(self):
+        """三角形マネージャーの初期化"""
+        self.triangle_list = []
+        self.next_triangle_number = 1
+    
+    def get_triangle_by_number(self, number):
+        """番号から三角形を取得"""
+        return next((t for t in self.triangle_list if t.number == number), None)
+    
+    def add_triangle(self, triangle_data):
+        """三角形をリストに追加し、次の番号を更新"""
+        self.triangle_list.append(triangle_data)
+        
+        # 次の三角形番号を更新
+        if triangle_data.number >= self.next_triangle_number:
+            self.next_triangle_number = triangle_data.number + 1
+    
+    def update_triangle_counter(self):
+        """三角形の番号カウンターを更新"""
+        # 最大の三角形番号を見つけて次の番号を設定
+        max_num = 0
+        for tri in self.triangle_list:
+            if tri.number > max_num:
+                max_num = tri.number
+        self.next_triangle_number = max_num + 1
+        logger.debug(f"三角形カウンター更新: 次の番号 = {self.next_triangle_number}")
+    
+    def create_triangle_at_side(self, parent_number, side_index, lengths):
+        """親三角形の指定された辺に新しい三角形を作成して追加"""
+        if not self.triangle_list:
+            logger.warning("三角形リストが空です")
+            return None
+        
+        # 親三角形の取得
+        parent_triangle = self.get_triangle_by_number(parent_number)
+        if not parent_triangle:
+            logger.warning(f"親三角形 {parent_number} が見つかりません")
+            return None
+        
+        # 既に接続されているかチェック
+        if parent_triangle.children[side_index] is not None:
+            logger.warning(f"三角形 {parent_number} の辺 {side_index} には既に三角形が接続されています")
+            return None
+        
+        # 三角形の成立条件をチェック
+        if not parent_triangle.is_valid_lengths(lengths[0], lengths[1], lengths[2]):
+            logger.warning(f"指定された辺の長さ ({lengths[0]:.1f}, {lengths[1]:.1f}, {lengths[2]:.1f}) では三角形が成立しません")
+            return None
+        
+        # 接続点（次の三角形の基準点）
+        connection_point = parent_triangle.get_connection_point_by_side(side_index)
+        
+        # 接続角度
+        connection_angle = parent_triangle.get_angle_by_side(side_index)
+        
+        # 新しい三角形を作成
+        new_triangle = TriangleData(
+            a=lengths[0], b=lengths[1], c=lengths[2],
+            p_ca=connection_point,
+            angle_deg=connection_angle,
+            number=self.next_triangle_number
+        )
+        
+        # 親子関係の設定
+        parent_triangle.set_child(new_triangle, side_index)
+        
+        # 三角形リストに追加
+        self.add_triangle(new_triangle)
+        
+        return new_triangle
+    
+    def update_triangle_and_propagate(self, triangle, new_lengths):
+        """三角形の寸法を更新し、子三角形の座標も再計算する"""
+        if not triangle:
+            logger.warning("更新する三角形が指定されていません")
+            return False
+            
+        # 更新前の子三角形の接続情報を保存
+        children_info = []
+        for i, child in enumerate(triangle.children):
+            if child:
+                children_info.append({
+                    'index': i,
+                    'child': child,
+                    'old_point': QPointF(child.points[0]),
+                    'old_angle': child.angle_deg
+                })
+        
+        # 1. 三角形の寸法と座標を更新
+        if not triangle.update_with_new_lengths(new_lengths):
+            return False
+        
+        # 2. 子三角形の座標を更新
+        for info in children_info:
+            child = info['child']
+            side_index = info['index']
+            
+            # 新しい接続点と角度
+            new_p_ca = triangle.get_connection_point_by_side(side_index)
+            new_angle = triangle.get_angle_by_side(side_index)
+            
+            # 子三角形の更新前情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新前: 基準点=({info['old_point'].x():.1f}, {info['old_point'].y():.1f}), "
+                       f"角度={info['old_angle']:.1f}")
+            
+            # 子三角形の基準点と角度を更新
+            child.points[0] = new_p_ca
+            child.angle_deg = new_angle
+            
+            # 子三角形の座標を再計算
+            child.calculate_points()
+            
+            # 更新後情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f}), "
+                       f"角度={child.angle_deg:.1f}")
+            
+            # 3. 孫三角形があれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child)
+        
+        return True
+    
+    def update_child_triangles_recursive(self, parent):
+        """子三角形を再帰的に更新する"""
+        for side_index, child in enumerate(parent.children):
+            if not child:
+                continue
+                
+            # 新しい接続点と角度
+            new_p_ca = parent.get_connection_point_by_side(side_index)
+            new_angle = parent.get_angle_by_side(side_index)
+            
+            # 接続点の更新前後をログ出力
+            logger.debug(f"孫三角形 {child.number} 更新前: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # 子三角形の基準点と角度を更新
+            child.points[0] = new_p_ca
+            child.angle_deg = new_angle
+            
+            # 座標を再計算
+            child.calculate_points()
+            
+            logger.debug(f"孫三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # さらに子がいれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child) 

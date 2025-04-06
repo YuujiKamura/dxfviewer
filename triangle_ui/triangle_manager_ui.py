@@ -28,7 +28,7 @@ sys.path.append(str(parent_dir))
 
 # 三角形関連モジュールをインポート
 from ui.graphics_view import DxfGraphicsView
-from .triangle_data import TriangleData, TriangleManager
+from shapes.geometry.triangle_shape import TriangleData, TriangleManager
 from .triangle_exporters import DxfExporter, DxfExportSettings
 from .triangle_io import JsonIO
 from .triangle_graphics_item import TriangleItem, add_triangle_item_to_scene
