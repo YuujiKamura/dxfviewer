@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QGraphicsView, QGraphicsScene, QLineEdit,
     QMessageBox, QGraphicsPolygonItem, QGraphicsLineItem, QDoubleSpinBox,
     QComboBox, QStatusBar, QFileDialog, QGraphicsTextItem, QGraphicsSimpleTextItem,
-    QGraphicsRectItem, QSlider, QGraphicsEllipseItem
+    QGraphicsRectItem, QSlider, QGraphicsEllipseItem, QFrame
 )
 from PySide6.QtGui import (
     QPainter, QPen, QColor, QPolygonF, QDoubleValidator, QTransform,
@@ -652,9 +652,11 @@ class TriangleManagerWindow(QMainWindow):
         input_group = QWidget()
         input_layout = QVBoxLayout(input_group)
         
-        # 三角形選択コンボボックス
-        triangle_select_layout = QHBoxLayout()
-        triangle_select_layout.addWidget(QLabel("三角形選択:"))
+        # 辺の長さ入力 - 3つの入力欄を並べるように変更
+        lengths_layout = QHBoxLayout()
+        
+        # 三角形選択コンボボックス（左側に配置）
+        lengths_layout.addWidget(QLabel("三角形選択:"))
         self.triangle_combo = QComboBox()
         self.triangle_combo.setMinimumWidth(100)
         self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
@@ -665,11 +667,13 @@ class TriangleManagerWindow(QMainWindow):
         font.setPointSize(15)  # UIConstants.INPUT_FONT_SIZEの値
         self.triangle_combo.setFont(font)
         
-        triangle_select_layout.addWidget(self.triangle_combo)
-        input_layout.addLayout(triangle_select_layout)
+        lengths_layout.addWidget(self.triangle_combo)
         
-        # 辺の長さ入力 - 3つの入力欄を並べるように変更
-        lengths_layout = QHBoxLayout()
+        # 横方向のスペーサーを追加（縦の区切り線を追加）
+        vertical_line = QFrame()
+        vertical_line.setFrameShape(QFrame.VLine)
+        vertical_line.setFrameShadow(QFrame.Sunken)
+        lengths_layout.addWidget(vertical_line)
         
         # 辺A
         lengths_layout.addWidget(QLabel("辺A:"))
