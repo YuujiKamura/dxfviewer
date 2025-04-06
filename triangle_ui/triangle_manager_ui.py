@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QMessageBox, 
     QComboBox, QFileDialog, QFrame, QStatusBar,
-    QGraphicsScene, QGraphicsTextItem, QGraphicsSimpleTextItem
+    QGraphicsScene, QGraphicsTextItem, QGraphicsSimpleTextItem, QSizePolicy
 )
-from PySide6.QtGui import QPainter, QColor, QDoubleValidator
+from PySide6.QtGui import QPainter, QColor, QDoubleValidator, QPen
 from PySide6.QtCore import Qt, QPointF
 
 # 親ディレクトリをパスに追加
@@ -27,8 +27,8 @@ sys.path.append(str(parent_dir))
 
 # 三角形関連モジュールをインポート
 from ui.graphics_view import DxfGraphicsView
-from triangle_ui.triangle_data import TriangleData, TriangleManager, TriangleExporter
-from triangle_ui.triangle_ui_item import TriangleItem, add_triangle_item_to_scene
+from .triangle_data import TriangleData, TriangleManager, TriangleExporter
+from .triangle_graphics_item import TriangleItem, add_triangle_item_to_scene
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -148,9 +148,18 @@ class TriangleManagerWindow(QMainWindow):
         
         # 選択情報
         selection_layout = QHBoxLayout()
-        selection_layout.addWidget(QLabel("選択中:"))
+        # 選択中ラベルを作成し、固定幅を設定
+        selection_label = QLabel("選択中:")
+        selection_label.setFixedWidth(70)  # 固定幅を設定
+        selection_layout.addWidget(selection_label)
+        
         self.selected_info_label = QLabel("なし")
+        # 水平方向のポリシーを設定
+        self.selected_info_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         selection_layout.addWidget(self.selected_info_label)
+        # 余分なスペースを追加しない
+        selection_layout.setStretch(0, 0)  # 選択中ラベルは固定
+        selection_layout.setStretch(1, 1)  # 内容ラベルは拡張可能
         info_layout.addLayout(selection_layout)
         
         layout.addWidget(info_group)
