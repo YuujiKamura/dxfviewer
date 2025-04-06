@@ -876,6 +876,10 @@ class TriangleManagerWindow(QMainWindow):
         label.setFont(font)
         label.setDefaultTextColor(QColor(0, 0, 0))
         
+        # 三角形番号をクリック可能にするための設定
+        label.setData(0, triangle_data.number)  # 三角形番号を保存
+        label.setCursor(Qt.PointingHandCursor)  # クリック可能なカーソルに変更
+        
         self.view.scene().addItem(label)
         
         # シーンとビューを更新
@@ -943,6 +947,13 @@ class TriangleManagerWindow(QMainWindow):
         
         # 更新ボタンを有効化
         self.update_triangle_button.setEnabled(True)
+        
+        # コンボボックスの選択も更新
+        self.triangle_combo.blockSignals(True)  # シグナルを一時停止して再帰呼び出しを防止
+        index = self.triangle_combo.findData(triangle_number)
+        if index >= 0:
+            self.triangle_combo.setCurrentIndex(index)
+        self.triangle_combo.blockSignals(False)  # シグナルを再開
         
         # 選択された辺をハイライト
         for item in self.view.scene().items():
@@ -1213,11 +1224,7 @@ class TriangleManagerWindow(QMainWindow):
         if self.selected_parent_number < 0:
             QMessageBox.warning(self, "選択エラー", "三角形が選択されていません")
             return False
-        
-        # 辺選択チェック（警告のみ表示し、処理は続行）
-        if self.selected_side_index < 0:
-            QMessageBox.information(self, "注意", "三角形の辺が選択されていませんが、三角形全体の更新を行います")
-        
+
         # 三角形を取得
         triangle = self.get_triangle_by_number(self.selected_parent_number)
         if not triangle:
@@ -1439,6 +1446,10 @@ class TriangleManagerWindow(QMainWindow):
             label.setFont(font)
             label.setDefaultTextColor(QColor(0, 0, 0))
             
+            # 三角形番号をクリック可能にするための設定
+            label.setData(0, triangle.number)  # 三角形番号を保存
+            label.setCursor(Qt.PointingHandCursor)  # クリック可能なカーソルに変更
+            
             self.view.scene().addItem(label)
         
         # シーンとビューを更新
@@ -1480,20 +1491,18 @@ class TriangleManagerWindow(QMainWindow):
         clicked_items = self.view.scene().items(event.scenePos())
         
         if clicked_items:
-            # デバッグ情報を出力
-            logging.debug(f"クリックされたアイテム数: {len(clicked_items)}")
-            
-            # 寸法テキストや背景がクリックされたかチェック
-            for i, item in enumerate(clicked_items):
-                # デバッグ出力
-                if i < 3:  # 最初の数個のアイテムについてのみログ出力
-                    data0 = item.data(0)
-                    data1 = item.data(1)
-                    item_type = type(item).__name__
-                    has_data0 = data0 is not None
-                    has_data1 = data1 is not None
-                    logging.debug(f"アイテム[{i}]: タイプ={item_type}, data(0)={data0}, data(1)={data1}, データあり={has_data0}/{has_data1}")
-                
+            # 最前面のアイテムから順に処理
+            for item in clicked_items:
+                # GraphicsTextItemの処理（三角形番号クリック）
+                if isinstance(item, QGraphicsTextItem) and item.data(0) is not None:
+                    triangle_number = item.data(0)
+                    if isinstance(triangle_number, int):
+                        # 三角形番号をクリックした場合、その三角形を選択
+                        logging.debug(f"三角形番号 {triangle_number} をクリック")
+                        self.handle_triangle_selected(triangle_number)
+                        event.accept()
+                        return
+                # その他既存の処理（寸法のテキストや背景クリック）
                 if isinstance(item, QGraphicsSimpleTextItem) and item.data(0) is not None:
                     # 三角形番号と辺インデックスを取得
                     side_index = item.data(0)
@@ -1637,6 +1646,56 @@ class TriangleManagerWindow(QMainWindow):
                 self.triangle_combo.setCurrentIndex(0)  # デフォルト選択
         
         self.triangle_combo.blockSignals(False)  # シグナルを再開
+
+    def handle_triangle_selected(self, triangle_number):
+        """三角形が選択されたときの処理"""
+        # 選択情報を更新（辺は選択されていない状態）
+        self.selected_parent_number = triangle_number
+        self.selected_side_index = -1  # 辺は選択されていない
+        
+        # 三角形を取得
+        triangle = self.get_triangle_by_number(triangle_number)
+        if not triangle:
+            return
+        
+        # 三角形の情報をフォームに反映
+        self.new_len_a_input.setText(f"{triangle.lengths[0]:.1f}")
+        self.new_len_b_input.setText(f"{triangle.lengths[1]:.1f}")
+        self.new_len_c_input.setText(f"{triangle.lengths[2]:.1f}")
+        
+        # 選択情報を表示
+        self.selected_info_label.setText(f"三角形 {triangle_number}")
+        
+        # 更新ボタンを有効化
+        self.update_triangle_button.setEnabled(True)
+        
+        # コンボボックスの選択も更新
+        self.triangle_combo.blockSignals(True)  # シグナルを一時停止して再帰呼び出しを防止
+        index = self.triangle_combo.findData(triangle_number)
+        if index >= 0:
+            self.triangle_combo.setCurrentIndex(index)
+        self.triangle_combo.blockSignals(False)  # シグナルを再開
+        
+        # シーン内の三角形を選択状態にする（辺は選択されない）
+        for item in self.view.scene().items():
+            if isinstance(item, TriangleItem):
+                if item.triangle_data.number == triangle_number:
+                    # 選択された三角形を強調表示（辺は選択しない）
+                    item.setOpacity(1.0)
+                    pen = item.pen()
+                    pen.setWidth(2)
+                    pen.setColor(QColor(255, 0, 0))  # 赤色で強調
+                    item.setPen(pen)
+                else:
+                    # 他の三角形は通常表示
+                    item.setOpacity(0.7)
+                    pen = item.pen()
+                    pen.setWidth(1)
+                    pen.setColor(item.triangle_data.color)
+                    item.setPen(pen)
+        
+        # 詳細情報をステータスバーに表示
+        self.statusBar().showMessage(f"三角形 {triangle_number} を選択しました")
 
 def main():
     """メイン関数"""
