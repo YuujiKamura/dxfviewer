@@ -847,6 +847,47 @@ class TriangleManagerWindow(QMainWindow):
         # シーンとビューを更新
         self.view.initialize_view()
     
+    def get_detailed_edge_info(self, triangle, side_index):
+        """三角形の辺の詳細情報を文字列として返す（純粋関数）"""
+        if not triangle:
+            return "選択なし"
+        
+        # 辺の表示名マッピング（インデックスから名前へ）
+        edge_name_mapping = {
+            0: "A",  # インデックス0 → 辺A (CA→AB)
+            1: "B",  # インデックス1 → 辺B (AB→BC)
+            2: "C"   # インデックス2 → 辺C (BC→CA)
+        }
+        edge_name = edge_name_mapping[side_index]
+        
+        # 辺の両端点を直接頂点配列から取得
+        # 頂点インデックスマッピング
+        edge_points_mapping = {
+            0: (0, 1),  # 辺A: CA→AB
+            1: (1, 2),  # 辺B: AB→BC
+            2: (2, 0)   # 辺C: BC→CA
+        }
+        start_idx, end_idx = edge_points_mapping[side_index]
+        p1 = triangle.points[start_idx]
+        p2 = triangle.points[end_idx]
+        edge_length = triangle.lengths[side_index]
+        
+        # 頂点名マッピング（辺のインデックスから頂点の名前ペアへ）
+        edge_vertices_mapping = {
+            0: ("CA", "AB"),  # 辺A
+            1: ("AB", "BC"),  # 辺B
+            2: ("BC", "CA")   # 辺C
+        }
+        start_vertex, end_vertex = edge_vertices_mapping[side_index]
+        
+        # 詳細情報を文字列として返す
+        return (
+            f"三角形 {triangle.number} の辺 {edge_name}: "
+            f"{start_vertex}({p1.x():.1f}, {p1.y():.1f}) → "
+            f"{end_vertex}({p2.x():.1f}, {p2.y():.1f}), "
+            f"長さ: {edge_length:.1f}"
+        )
+
     def handle_side_clicked(self, triangle_number, side_index):
         """三角形の辺がクリックされたときの処理"""
         # 選択情報を保存
@@ -869,7 +910,19 @@ class TriangleManagerWindow(QMainWindow):
         # 更新ボタンを有効化
         self.update_triangle_button.setEnabled(True)
         
-        self.statusBar().showMessage(f"三角形 {triangle_number} の辺 {chr(65 + side_index)} を選択しました")
+        # 選択された辺をハイライト
+        for item in self.view.scene().items():
+            if isinstance(item, TriangleItem):
+                if item.triangle_data.number == triangle_number:
+                    # 選択された三角形の辺をハイライト
+                    item.highlight_selected_side(side_index)
+                else:
+                    # 他の三角形の選択をクリア
+                    item.highlight_selected_side(None)
+        
+        # 詳細情報をステータスバーに表示
+        detailed_info = self.get_detailed_edge_info(triangle, side_index)
+        self.statusBar().showMessage(detailed_info)
     
     def add_triangle(self):
         """選択された辺に新しい三角形を追加"""
