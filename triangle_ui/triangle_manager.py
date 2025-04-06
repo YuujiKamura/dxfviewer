@@ -75,6 +75,7 @@ class UIConstants:
     DEFAULT_FONT_SIZE = 10   # 基本フォントサイズ
     BUTTON_FONT_SIZE = 20    # ボタン用フォントサイズ（標準の2倍）
     LABEL_FONT_SIZE = 12     # ラベル用フォントサイズ
+    INPUT_FONT_SIZE = 15     # 入力フィールド用フォントサイズ（基本の1.5倍）
     DIMENSION_FONT_SIZE = 6  # 三角形の寸法表示サイズ
     
     # 色の定義
@@ -103,7 +104,8 @@ class UIConstants:
             padding: 3px;
             border: 1px solid #a0a0a0;
             border-radius: 4px;
-            font-size: {DEFAULT_FONT_SIZE}pt;
+            font-size: {INPUT_FONT_SIZE}pt;
+            font-weight: bold;
         }}
         QLabel {{ 
             font-size: {LABEL_FONT_SIZE}pt; 
@@ -505,8 +507,11 @@ class TriangleItem(QGraphicsPolygonItem):
             }
             self.dimension_items.append(dimension_info)
             
-            # 辺データを保存
-            dimension_text.setData(0, edge_index)
+            # アイテムにデータを設定（クリック時の辺の特定用）
+            dimension_text.setData(0, edge_index)  # 辺インデックスを保存
+            dimension_text.setData(1, self.triangle_data.number)  # 三角形番号を保存
+            bg_rect.setData(0, edge_index)  # 辺インデックスを保存
+            bg_rect.setData(1, self.triangle_data.number)  # 三角形番号を保存
     
     def mousePressEvent(self, event):
         """三角形内のクリックイベント処理"""
@@ -516,18 +521,12 @@ class TriangleItem(QGraphicsPolygonItem):
                 side_index = line.data(0)
                 self.signalHelper.sideClicked.emit(self.triangle_data.number, side_index)
                 break
-                
+        
         # 選択されていない場合は親クラスの処理を呼ぶ
         super().mousePressEvent(event)
     
     def hoverEnterEvent(self, event):
         """ホバー進入イベント処理"""
-        # ホバー時の薄い青のハイライトを削除
-        # for line in self.side_lines:
-        #     pen = line.pen()
-        #     pen.setColor(QColor(100, 200, 255, 100))
-        #     line.setPen(pen)
-        # self.update()
         super().hoverEnterEvent(event)
     
     def hoverLeaveEvent(self, event):
@@ -591,6 +590,9 @@ class TriangleManagerWindow(QMainWindow):
         self.view = DxfGraphicsView()
         self.view.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         main_layout.addWidget(self.view, 1)
+        
+        # 背景クリック時のハンドラを設定
+        self.view.scene().mouseReleaseEvent = self.scene_mouse_release_event
         
         # コントロールパネルの作成
         self.control_panel = self.create_control_panel()
@@ -1409,6 +1411,47 @@ class TriangleManagerWindow(QMainWindow):
     def get_triangle_by_number(self, number):
         """番号から三角形を取得"""
         return next((t for t in self.triangle_list if t.number == number), None)
+
+    def clear_all_highlights(self):
+        """すべての三角形の選択状態をクリア（純粋関数）"""
+        # すべての三角形アイテムを取得
+        for item in self.view.scene().items():
+            if isinstance(item, TriangleItem):
+                item.highlight_selected_side(None)
+        
+        # 内部の選択状態もリセット
+        self.selected_parent_number = -1
+        self.selected_side_index = -1
+        self.selected_info_label.setText("なし")
+        self.update_triangle_button.setEnabled(False)
+        
+        # ステータスバーをクリア
+        self.statusBar().showMessage("選択をクリアしました")
+
+    def scene_mouse_release_event(self, event):
+        """シーンのマウスリリースイベント処理（背景クリック処理を含む）"""
+        # クリックされたアイテムを取得
+        clicked_items = self.view.scene().items(event.scenePos())
+        
+        if clicked_items:
+            # 寸法テキストや背景がクリックされたかチェック
+            for item in clicked_items:
+                if (isinstance(item, QGraphicsSimpleTextItem) or isinstance(item, QGraphicsRectItem)) and item.data(0) is not None:
+                    # 三角形番号と辺インデックスを取得
+                    triangle_number = item.data(1)
+                    side_index = item.data(0)
+                    
+                    if triangle_number is not None and side_index is not None:
+                        # 辺を選択状態にする
+                        self.handle_side_clicked(triangle_number, side_index)
+                        event.accept()
+                        return
+        else:
+            # 背景クリック - すべての選択をクリア
+            self.clear_all_highlights()
+        
+        # 親クラスの処理を呼び出す
+        QGraphicsScene.mouseReleaseEvent(self.view.scene(), event)
 
 def main():
     """メイン関数"""
