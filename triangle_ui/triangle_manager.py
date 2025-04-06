@@ -50,6 +50,84 @@ except ImportError:
     logger.warning("ezdxfモジュールが見つかりません。DXF出力機能は利用できません。")
     logger.warning("インストールには: pip install ezdxf を実行してください。")
 
+# UIデザイン定数 - 視覚的に整理された設定値
+class UIConstants:
+    # ウィンドウサイズ
+    WINDOW_WIDTH = 1200
+    WINDOW_HEIGHT = 800
+    
+    # コントロールサイズ
+    CONTROL_HEIGHT = 36      # 標準コントロールの高さ
+    BUTTON_HEIGHT = 36       # ボタンの高さ
+    BUTTON_WIDTH = 120       # ボタンの幅
+    INPUT_HEIGHT = 36        # 入力フィールドの高さ
+    INPUT_WIDTH = 80         # 入力フィールドの幅
+    SLIDER_HEIGHT = 30       # スライダーの高さ
+    SLIDER_WIDTH = 150       # スライダーの幅
+    
+    # パネルとグループサイズ
+    PANEL_MIN_HEIGHT = 200   # パネルの最小高さ
+    GROUP_MIN_HEIGHT = 80    # グループの最小高さ
+    PANEL_MARGIN = 10        # パネルの余白
+    GROUP_MARGIN = 8         # グループの余白
+    
+    # フォントサイズ
+    DEFAULT_FONT_SIZE = 10   # 基本フォントサイズ
+    BUTTON_FONT_SIZE = 20    # ボタン用フォントサイズ（標準の2倍）
+    LABEL_FONT_SIZE = 12     # ラベル用フォントサイズ
+    DIMENSION_FONT_SIZE = 6  # 三角形の寸法表示サイズ
+    
+    # 色の定義
+    BACKGROUND_COLOR = "#f0f0f0"
+    BUTTON_COLOR = "#e0e0e0"
+    HIGHLIGHT_COLOR = "#d0d0d0"
+    FORM_BACKGROUND = "#f8f8f8"
+    
+    # スタイルシート
+    CONTROL_STYLE = f"""
+        QWidget {{ background-color: {BACKGROUND_COLOR}; }}
+        QPushButton {{ 
+            min-height: {BUTTON_HEIGHT}px; 
+            min-width: {BUTTON_WIDTH}px;
+            background-color: {BUTTON_COLOR};
+            padding: 5px;
+            border: 1px solid #a0a0a0;
+            border-radius: 4px;
+            font-size: {BUTTON_FONT_SIZE}pt;
+            font-weight: bold;
+        }}
+        QPushButton:hover {{ background-color: {HIGHLIGHT_COLOR}; }}
+        QLineEdit {{ 
+            min-height: {INPUT_HEIGHT}px; 
+            min-width: {INPUT_WIDTH}px;
+            padding: 3px;
+            border: 1px solid #a0a0a0;
+            border-radius: 4px;
+            font-size: {DEFAULT_FONT_SIZE}pt;
+        }}
+        QLabel {{ 
+            font-size: {LABEL_FONT_SIZE}pt; 
+            min-height: {CONTROL_HEIGHT // 2}px;
+        }}
+        QSlider {{ 
+            min-height: {SLIDER_HEIGHT}px; 
+            min-width: {SLIDER_WIDTH}px;
+        }}
+        QGroupBox {{ 
+            min-height: {GROUP_MIN_HEIGHT}px; 
+            margin-top: {GROUP_MARGIN}px;
+            margin-bottom: {GROUP_MARGIN}px;
+            padding: {GROUP_MARGIN}px;
+            border: 1px solid #c0c0c0;
+            border-radius: 6px;
+            background-color: {FORM_BACKGROUND};
+        }}
+        QVBoxLayout, QHBoxLayout {{ 
+            margin: {PANEL_MARGIN}px; 
+            spacing: {PANEL_MARGIN}px;
+        }}
+    """
+
 class TriangleData:
     """三角形のデータと計算ロジックを保持するクラス"""
     def __init__(self, a=0.0, b=0.0, c=0.0, p_ca=QPointF(0, 0), angle_deg=180.0, number=1, parent=None, connection_side=-1):
@@ -496,15 +574,16 @@ class TriangleManagerWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # 寸法テキストのフォントサイズ（デフォルト値）
-        self.dimension_font_size = 6
+        # UIデザイン定数を適用
+        self.dimension_font_size = UIConstants.DIMENSION_FONT_SIZE
         
         # ウィンドウの設定
         self.setWindowTitle("Triangle Manager")
-        self.resize(1200, 800)
+        self.resize(UIConstants.WINDOW_WIDTH, UIConstants.WINDOW_HEIGHT)
         
         # メインウィジェットとレイアウト
         main_widget = QWidget()
+        main_widget.setStyleSheet(UIConstants.CONTROL_STYLE)
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
         
