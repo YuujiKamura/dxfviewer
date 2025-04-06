@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QLineEdit, QMessageBox, 
     QComboBox, QFileDialog, QFrame, QStatusBar,
     QGraphicsScene, QGraphicsTextItem, QGraphicsSimpleTextItem, QSizePolicy,
-    QApplication
+    QApplication, QDialog, QFormLayout, QDoubleSpinBox, QCheckBox
 )
 from PySide6.QtGui import QPainter, QColor, QDoubleValidator, QPen
 from PySide6.QtCore import Qt, QPointF
@@ -29,7 +29,7 @@ sys.path.append(str(parent_dir))
 # 三角形関連モジュールをインポート
 from ui.graphics_view import DxfGraphicsView
 from .triangle_data import TriangleData, TriangleManager
-from .triangle_exporters import DxfExporter
+from .triangle_exporters import DxfExporter, DxfExportSettings
 from .triangle_io import JsonIO
 from .triangle_graphics_item import TriangleItem, add_triangle_item_to_scene
 from .triangle_ui_controls import TriangleControlPanel
@@ -245,22 +245,99 @@ class TriangleManagerWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "更新エラー", "三角形を更新できませんでした")
     
+    def show_dxf_export_settings_dialog(self):
+        """DXFエクスポート設定ダイアログを表示する"""
+        # 設定ダイアログの作成
+        dialog = QDialog(self)
+        dialog.setWindowTitle("DXFエクスポート設定")
+        dialog.setMinimumWidth(400)
+        
+        # レイアウト
+        layout = QFormLayout(dialog)
+        
+        # 辺のテキストサイズ
+        edge_text_scale = QDoubleSpinBox()
+        edge_text_scale.setRange(0.01, 1.0)
+        edge_text_scale.setSingleStep(0.01)
+        edge_text_scale.setValue(0.05)
+        edge_text_scale.setDecimals(3)
+        edge_text_scale.setSuffix(" × 辺の長さ")
+        layout.addRow("辺の長さテキストサイズ:", edge_text_scale)
+        
+        # 番号のテキストサイズ
+        number_text_scale = QDoubleSpinBox()
+        number_text_scale.setRange(0.01, 1.0)
+        number_text_scale.setSingleStep(0.01)
+        number_text_scale.setValue(0.1)
+        number_text_scale.setDecimals(3)
+        number_text_scale.setSuffix(" × 最大辺の長さ")
+        layout.addRow("三角形番号テキストサイズ:", number_text_scale)
+        
+        # 表示オプション
+        show_edge_lengths = QCheckBox("辺の長さを表示する")
+        show_edge_lengths.setChecked(True)
+        layout.addRow("", show_edge_lengths)
+        
+        show_triangle_numbers = QCheckBox("三角形番号を表示する")
+        show_triangle_numbers.setChecked(True)
+        layout.addRow("", show_triangle_numbers)
+        
+        auto_rotate_edge_text = QCheckBox("辺のテキストを辺に沿って回転させる")
+        auto_rotate_edge_text.setChecked(True)
+        layout.addRow("", auto_rotate_edge_text)
+        
+        # ボタン
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("OK")
+        cancel_button = QPushButton("キャンセル")
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(ok_button)
+        layout.addRow("", button_layout)
+        
+        # ボタンの接続
+        ok_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+        
+        # 設定オブジェクト
+        settings = DxfExportSettings()
+        
+        # ダイアログの表示
+        if dialog.exec() == QDialog.Accepted:
+            # 設定値の取得
+            settings.edge_text_scale_factor = edge_text_scale.value()
+            settings.number_text_scale_factor = number_text_scale.value()
+            settings.show_edge_lengths = show_edge_lengths.isChecked()
+            settings.show_triangle_numbers = show_triangle_numbers.isChecked()
+            settings.auto_rotate_edge_text = auto_rotate_edge_text.isChecked()
+            return settings
+        else:
+            return None  # キャンセルされた場合
+    
     def on_export_dxf(self):
         """DXF出力ボタンがクリックされたとき"""
-        # 保存ファイル名を取得
+        # 出力ファイルの選択
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "DXFファイルを保存", "", "DXF Files (*.dxf)"
+            self, "DXFファイルを保存", "", "DXF Files (*.dxf);;All Files (*)"
         )
         
         if not file_path:
             return  # ユーザーがキャンセルした場合
         
-        # DXF出力
-        if DxfExporter.export(self.triangle_manager.triangle_list, file_path):
+        # .dxf拡張子を確保
+        if not file_path.lower().endswith('.dxf'):
+            file_path += '.dxf'
+        
+        # DXFエクスポート設定ダイアログを表示
+        export_settings = self.show_dxf_export_settings_dialog()
+        if export_settings is None:
+            return  # ユーザーがキャンセルした場合
+        
+        # 三角形データを出力
+        if DxfExporter.export(self.triangle_manager.triangle_list, file_path, export_settings):
             self.statusBar().showMessage(f"DXFファイルを保存しました: {file_path}")
-            QMessageBox.information(self, "DXF出力", f"三角形データをDXFファイルに出力しました。\n{file_path}")
         else:
-            QMessageBox.critical(self, "DXF出力エラー", "DXFファイルの出力中にエラーが発生しました。")
+            self.statusBar().showMessage("DXFファイルの保存中にエラーが発生しました")
+            QMessageBox.warning(self, "エラー", "DXFファイルの保存中にエラーが発生しました。ログを確認してください。")
     
     def on_save_json(self):
         """JSON保存ボタンがクリックされたとき"""
