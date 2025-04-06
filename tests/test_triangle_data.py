@@ -1,7 +1,7 @@
 import unittest
 import math
 from PySide6.QtCore import QPointF
-from triangle_ui.triangle_data import TriangleData
+from shapes.geometry.triangle_shape import TriangleData
 
 class TestTriangleData(unittest.TestCase):
     
