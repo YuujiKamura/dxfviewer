@@ -12,7 +12,7 @@ import logging
 from PySide6.QtWidgets import QApplication
 
 # Triangle UIをインポート
-from triangle_ui.triangle_manager import TriangleManagerWindow
+from triangle_ui.triangle_manager_ui import TriangleManagerWindow
 
 # ロガー設定
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s')

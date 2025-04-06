@@ -12,6 +12,26 @@ from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QPolygonF
 import logging
 
+# 幾何学計算モジュールをインポート
+from .triangle_geometry import (
+    is_valid_triangle,
+    calculate_internal_angles,
+    calculate_triangle_points,
+    get_side_points,
+    get_connection_point,
+    get_connection_angle
+)
+
+# DXF出力用にezdxfをインポート
+try:
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment
+    HAS_EZDXF = True
+except ImportError:
+    HAS_EZDXF = False
+    logging.warning("ezdxfモジュールが見つかりません。DXF出力機能は利用できません。")
+    logging.warning("インストールには: pip install ezdxf を実行してください。")
+
 # ロガー設定
 logger = logging.getLogger(__name__)
 
@@ -39,93 +59,25 @@ class TriangleData:
         a = a if a is not None else self.lengths[0]
         b = b if b is not None else self.lengths[1]
         c = c if c is not None else self.lengths[2]
-        if a <= 0 or b <= 0 or c <= 0:
-            return False
-        return (a + b > c) and (b + c > a) and (c + a > b)
+        return is_valid_triangle(a, b, c)
     
     def calculate_points(self):
         """三角形の頂点座標を計算"""
-        p_ca = self.points[0]
-        len_a = self.lengths[0]
-        angle_rad = math.radians(self.angle_deg)
+        # 幾何学計算モジュールを使用して頂点を計算
+        self.points, self.center_point = calculate_triangle_points(
+            self.points[0],
+            self.lengths[0],
+            self.lengths[1],
+            self.lengths[2],
+            self.angle_deg
+        )
         
-        # 点ABの計算
-        p_ab = QPointF(p_ca.x() + len_a * math.cos(angle_rad), p_ca.y() + len_a * math.sin(angle_rad))
-        self.points[1] = p_ab
-        
-        # 内角の計算（余弦定理）
-        len_b = self.lengths[1]
-        len_c = self.lengths[2]
-        
-        # 角A（頂点BC）
-        if len_b * len_c > 0:
-            cos_angle_a = (len_b**2 + len_c**2 - len_a**2) / (2 * len_b * len_c)
-            cos_angle_a = max(-1.0, min(1.0, cos_angle_a))
-            angle_a_rad = math.acos(cos_angle_a)
-            angle_a_deg = math.degrees(angle_a_rad)
-        else:
-            angle_a_deg = 0
-        
-        # 角B（頂点CA）
-        if len_a * len_c > 0:
-            cos_angle_b = (len_a**2 + len_c**2 - len_b**2) / (2 * len_a * len_c)
-            cos_angle_b = max(-1.0, min(1.0, cos_angle_b))
-            angle_b_rad = math.acos(cos_angle_b)
-            angle_b_deg = math.degrees(angle_b_rad)
-        else:
-            angle_b_deg = 0
-        
-        # 角C（頂点AB）
-        if len_a * len_b > 0:
-            cos_angle_c = (len_a**2 + len_b**2 - len_c**2) / (2 * len_a * len_b)
-            cos_angle_c = max(-1.0, min(1.0, cos_angle_c))
-            angle_c_rad = math.acos(cos_angle_c)
-            angle_c_deg = math.degrees(angle_c_rad)
-        else:
-            angle_c_deg = 0
-        
-        # 内部角度を設定
-        self.internal_angles_deg = [angle_a_deg, angle_b_deg, angle_c_deg]
-        
-        # 点BCの計算（一般的な方法）
-        # CAからABへのベクトル
-        vec_ca_to_ab = QPointF(p_ab.x() - p_ca.x(), p_ab.y() - p_ca.y())
-        
-        # 三角形の面積を計算（ヘロンの公式）
-        s = (len_a + len_b + len_c) / 2  # 半周長
-        area = math.sqrt(s * (s - len_a) * (s - len_b) * (s - len_c))  # 面積
-        
-        # 高さを計算
-        height = 2 * area / len_a  # 辺Aに対する高さ
-        
-        # 点ABからの垂線の足からBCまでの距離
-        base_to_bc = math.sqrt(len_c**2 - height**2)
-        
-        # 点BCの計算
-        # 垂線の方向ベクトル（CA→ABを90度回転）
-        perp_vec = QPointF(-vec_ca_to_ab.y(), vec_ca_to_ab.x())
-        perp_vec_length = math.sqrt(perp_vec.x()**2 + perp_vec.y()**2)
-        if perp_vec_length > 0:
-            # 単位ベクトル化して高さを掛ける
-            norm_perp_vec = QPointF(perp_vec.x() / perp_vec_length, perp_vec.y() / perp_vec_length)
-            height_vec = QPointF(norm_perp_vec.x() * height, norm_perp_vec.y() * height)
-            
-            # ABからbase_to_bc分進んだ点
-            if len_a > 0:
-                base_vec = QPointF(vec_ca_to_ab.x() / len_a * (len_a - base_to_bc), 
-                                  vec_ca_to_ab.y() / len_a * (len_a - base_to_bc))
-                base_point = QPointF(p_ab.x() - base_vec.x(), p_ab.y() - base_vec.y())
-                
-                # 高さ方向に移動して点BCを求める
-                self.points[2] = QPointF(base_point.x() + height_vec.x(), base_point.y() + height_vec.y())
-            else:
-                self.points[2] = p_ab  # エラー時の回避策
-        else:
-            self.points[2] = p_ab  # エラー時の回避策
-        
-        # 重心計算
-        p_bc = self.points[2]
-        self.center_point = QPointF((p_ca.x() + p_ab.x() + p_bc.x()) / 3.0, (p_ca.y() + p_ab.y() + p_bc.y()) / 3.0)
+        # 内角を計算
+        self.internal_angles_deg = calculate_internal_angles(
+            self.lengths[0],
+            self.lengths[1],
+            self.lengths[2]
+        )
     
     def get_polygon(self) -> QPolygonF:
         """描画用のQPolygonFを返す"""
@@ -133,61 +85,293 @@ class TriangleData:
     
     def get_side_line(self, side_index: int) -> tuple:
         """指定された辺の両端点を返す (0:A, 1:B, 2:C)"""
-        if side_index == 0:  # 辺A: CA→AB
-            logger.debug(f"辺A({side_index})の両端点: {self.points[0]} → {self.points[1]}")
-            return self.points[0], self.points[1]
-        elif side_index == 1:  # 辺B: AB→BC
-            logger.debug(f"辺B({side_index})の両端点: {self.points[1]} → {self.points[2]}")
-            return self.points[1], self.points[2]
-        elif side_index == 2:  # 辺C: BC→CA
-            logger.debug(f"辺C({side_index})の両端点: {self.points[2]} → {self.points[0]}")
-            return self.points[2], self.points[0]
+        # 幾何学計算モジュールを使用
+        result = get_side_points(self.points, side_index)
+        if result:
+            p1, p2 = result
+            logger.debug(f"Triangle {self.number}: 辺{chr(65 + side_index)}({side_index})の両端点: {p1} → {p2}")
+            return p1, p2
         else:
             logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}")
             return None
     
     def get_connection_point_by_side(self, side_index: int) -> QPointF:
         """指定された接続辺の次の三角形の基準点を返す"""
-        if side_index == 0:  # 辺A: CA→AB の場合、終点ABが次の三角形のCA点になる
-            logger.debug(f"Triangle {self.number}: 辺A({side_index})の接続点はAB点")
-            return self.points[1]  # 点AB（終点）を返す
-        elif side_index == 1:  # 辺B: AB→BC の場合、終点BCが次の三角形のCA点になる
-            logger.debug(f"Triangle {self.number}: 辺B({side_index})の接続点はBC点")
-            return self.points[2]  # 点BC（終点）を返す
-        elif side_index == 2:  # 辺C: BC→CA の場合、終点CAが次の三角形のCA点になる
-            logger.debug(f"Triangle {self.number}: 辺C({side_index})の接続点はCA点")
-            return self.points[0]  # 点CA（終点）を返す
+        # 幾何学計算モジュールを使用
+        connection_point = get_connection_point(self.points, side_index)
+        if connection_point:
+            logger.debug(f"Triangle {self.number}: 辺{chr(65 + side_index)}({side_index})の接続点は{connection_point}")
+            return connection_point
         else:
             logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}")
             return self.points[0]  # デフォルトは点CA
     
     def get_angle_by_side(self, side_index: int) -> float:
         """指定された辺に接続する次の三角形の回転角度を返す"""
-        if side_index == 0:  # 辺A: CA→AB
-            # AB方向から180度逆向き
-            return (self.angle_deg + 180) % 360
-        elif side_index == 1:  # 辺B: AB→BC
-            # AB→BC向きの角度を計算
-            vec_ab_to_bc = QPointF(self.points[2].x() - self.points[1].x(), 
-                                   self.points[2].y() - self.points[1].y())
-            angle_rad = math.atan2(vec_ab_to_bc.y(), vec_ab_to_bc.x())
-            # 180度回転（逆向き）
-            return (math.degrees(angle_rad) + 180) % 360
-        elif side_index == 2:  # 辺C: BC→CA
-            # BC→CA向きの角度を計算
-            vec_bc_to_ca = QPointF(self.points[0].x() - self.points[2].x(), 
-                                   self.points[0].y() - self.points[2].y())
-            angle_rad = math.atan2(vec_bc_to_ca.y(), vec_bc_to_ca.x())
-            # 180度回転（逆向き）
-            return (math.degrees(angle_rad) + 180) % 360
-        else:
-            logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}")
-            return 0
+        # 幾何学計算モジュールを使用
+        return get_connection_angle(self.points, side_index, self.angle_deg)
     
     def set_child(self, child_triangle, side_index):
         """指定した辺に接続する子三角形を設定"""
         if 0 <= side_index < 3:
             self.children[side_index] = child_triangle
+            child_triangle.parent = self
+            child_triangle.connection_side = side_index
             logger.debug(f"Triangle {self.number}の辺{side_index}に子三角形{child_triangle.number}を接続しました")
         else:
-            logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}") 
+            logger.warning(f"Triangle {self.number}: 無効な辺インデックス {side_index}")
+    
+    def update_with_new_lengths(self, new_lengths):
+        """三角形の寸法を更新する"""
+        if not self.is_valid_lengths(new_lengths[0], new_lengths[1], new_lengths[2]):
+            logger.warning(f"Triangle {self.number}: 無効な辺の長さ {new_lengths}")
+            return False
+        
+        # 寸法を更新
+        self.lengths = new_lengths.copy()
+        # 座標を再計算
+        self.calculate_points()
+        return True
+
+    @staticmethod
+    def get_detailed_edge_info(triangle, side_index):
+        """三角形の辺の詳細情報を文字列として返す（純粋関数）"""
+        if not triangle:
+            return "選択なし"
+        
+        # 辺の表示名マッピング（インデックスから名前へ）
+        edge_name_mapping = {
+            0: "A",  # インデックス0 → 辺A (CA→AB)
+            1: "B",  # インデックス1 → 辺B (AB→BC)
+            2: "C"   # インデックス2 → 辺C (BC→CA)
+        }
+        edge_name = edge_name_mapping[side_index]
+        
+        # 辺の両端点を取得
+        side_points = get_side_points(triangle.points, side_index)
+        if not side_points:
+            return "選択なし"
+            
+        p1, p2 = side_points
+        edge_length = triangle.lengths[side_index]
+        
+        # 頂点名マッピング（辺のインデックスから頂点の名前ペアへ）
+        edge_vertices_mapping = {
+            0: ("CA", "AB"),  # 辺A
+            1: ("AB", "BC"),  # 辺B
+            2: ("BC", "CA")   # 辺C
+        }
+        start_vertex, end_vertex = edge_vertices_mapping[side_index]
+        
+        # 詳細情報を文字列として返す
+        return (
+            f"三角形 {triangle.number} の辺 {edge_name}: "
+            f"{start_vertex}({p1.x():.1f}, {p1.y():.1f}) → "
+            f"{end_vertex}({p2.x():.1f}, {p2.y():.1f}), "
+            f"長さ: {edge_length:.1f}"
+        )
+
+
+class TriangleManager:
+    """三角形の集合を管理するクラス"""
+    
+    def __init__(self):
+        """三角形マネージャーの初期化"""
+        self.triangle_list = []
+        self.next_triangle_number = 1
+    
+    def get_triangle_by_number(self, number):
+        """番号から三角形を取得"""
+        return next((t for t in self.triangle_list if t.number == number), None)
+    
+    def add_triangle(self, triangle_data):
+        """三角形をリストに追加し、次の番号を更新"""
+        self.triangle_list.append(triangle_data)
+        
+        # 次の三角形番号を更新
+        if triangle_data.number >= self.next_triangle_number:
+            self.next_triangle_number = triangle_data.number + 1
+    
+    def update_triangle_counter(self):
+        """三角形の番号カウンターを更新"""
+        # 最大の三角形番号を見つけて次の番号を設定
+        max_num = 0
+        for tri in self.triangle_list:
+            if tri.number > max_num:
+                max_num = tri.number
+        self.next_triangle_number = max_num + 1
+        logger.debug(f"三角形カウンター更新: 次の番号 = {self.next_triangle_number}")
+    
+    def create_triangle_at_side(self, parent_number, side_index, lengths):
+        """親三角形の指定された辺に新しい三角形を作成して追加"""
+        if not self.triangle_list:
+            logger.warning("三角形リストが空です")
+            return None
+        
+        # 親三角形の取得
+        parent_triangle = self.get_triangle_by_number(parent_number)
+        if not parent_triangle:
+            logger.warning(f"親三角形 {parent_number} が見つかりません")
+            return None
+        
+        # 既に接続されているかチェック
+        if parent_triangle.children[side_index] is not None:
+            logger.warning(f"三角形 {parent_number} の辺 {side_index} には既に三角形が接続されています")
+            return None
+        
+        # 三角形の成立条件をチェック
+        if not is_valid_triangle(lengths[0], lengths[1], lengths[2]):
+            logger.warning(f"指定された辺の長さ ({lengths[0]:.1f}, {lengths[1]:.1f}, {lengths[2]:.1f}) では三角形が成立しません")
+            return None
+        
+        # 接続点（次の三角形の基準点）
+        connection_point = parent_triangle.get_connection_point_by_side(side_index)
+        
+        # 接続角度
+        connection_angle = parent_triangle.get_angle_by_side(side_index)
+        
+        # 新しい三角形を作成
+        new_triangle = TriangleData(
+            a=lengths[0], b=lengths[1], c=lengths[2],
+            p_ca=connection_point,
+            angle_deg=connection_angle,
+            number=self.next_triangle_number
+        )
+        
+        # 親子関係の設定
+        parent_triangle.set_child(new_triangle, side_index)
+        
+        # 三角形リストに追加
+        self.add_triangle(new_triangle)
+        
+        return new_triangle
+    
+    def update_triangle_and_propagate(self, triangle, new_lengths):
+        """三角形の寸法を更新し、子三角形の座標も再計算する"""
+        if not triangle:
+            logger.warning("更新する三角形が指定されていません")
+            return False
+            
+        # 更新前の子三角形の接続情報を保存
+        children_info = []
+        for i, child in enumerate(triangle.children):
+            if child:
+                children_info.append({
+                    'index': i,
+                    'child': child,
+                    'old_point': QPointF(child.points[0]),
+                    'old_angle': child.angle_deg
+                })
+        
+        # 1. 三角形の寸法と座標を更新
+        if not triangle.update_with_new_lengths(new_lengths):
+            return False
+        
+        # 2. 子三角形の座標を更新
+        for info in children_info:
+            child = info['child']
+            side_index = info['index']
+            
+            # 新しい接続点と角度
+            new_p_ca = triangle.get_connection_point_by_side(side_index)
+            new_angle = triangle.get_angle_by_side(side_index)
+            
+            # 子三角形の更新前情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新前: 基準点=({info['old_point'].x():.1f}, {info['old_point'].y():.1f}), "
+                       f"角度={info['old_angle']:.1f}")
+            
+            # 子三角形の基準点と角度を更新
+            child.points[0] = new_p_ca
+            child.angle_deg = new_angle
+            
+            # 子三角形の座標を再計算
+            child.calculate_points()
+            
+            # 更新後情報をログ出力
+            logger.debug(f"子三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f}), "
+                       f"角度={child.angle_deg:.1f}")
+            
+            # 3. 孫三角形があれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child)
+        
+        return True
+    
+    def update_child_triangles_recursive(self, parent):
+        """子三角形を再帰的に更新する"""
+        for side_index, child in enumerate(parent.children):
+            if not child:
+                continue
+                
+            # 新しい接続点と角度
+            new_p_ca = parent.get_connection_point_by_side(side_index)
+            new_angle = parent.get_angle_by_side(side_index)
+            
+            # 接続点の更新前後をログ出力
+            logger.debug(f"孫三角形 {child.number} 更新前: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # 子三角形の基準点と角度を更新
+            child.points[0] = new_p_ca
+            child.angle_deg = new_angle
+            
+            # 座標を再計算
+            child.calculate_points()
+            
+            logger.debug(f"孫三角形 {child.number} 更新後: 基準点=({child.points[0].x():.1f}, {child.points[0].y():.1f})")
+            
+            # さらに子がいれば再帰的に更新
+            if any(child.children):
+                self.update_child_triangles_recursive(child)
+
+
+class TriangleExporter:
+    """三角形データのエクスポート機能"""
+    
+    @staticmethod
+    def export_to_dxf(triangle_list, file_path):
+        """三角形データをDXFファイルに出力する"""
+        if not HAS_EZDXF:
+            logger.error("ezdxfモジュールがインストールされていないため、DXF出力機能は利用できません。")
+            return False
+        
+        if not triangle_list:
+            logger.warning("出力する三角形データがありません。")
+            return False
+        
+        try:
+            # R2010形式のDXFドキュメントを作成
+            doc = ezdxf.new('R2010')
+            msp = doc.modelspace()
+            
+            # 各三角形をポリラインとして追加
+            for triangle_data in triangle_list:
+                if triangle_data and triangle_data.points:
+                    # 三角形の点を取得
+                    points = [(p.x(), p.y(), 0) for p in triangle_data.points]
+                    # 閉じたポリラインを作成
+                    points.append(points[0])  # 最初の点を追加して閉じる
+                    
+                    # ポリラインをモデルスペースに追加
+                    msp.add_lwpolyline(points)
+                    
+                    # 寸法テキストを追加
+                    for i, length in enumerate(triangle_data.lengths):
+                        # 辺の中点を計算
+                        p1, p2 = triangle_data.get_side_line(i)
+                        mid_x = (p1.x() + p2.x()) / 2
+                        mid_y = (p1.y() + p2.y()) / 2
+                        
+                        # テキスト追加
+                        text = msp.add_text(f"{length:.1f}", height=length * 0.05)
+                        text.dxf.insert = (mid_x, mid_y)
+                        text.dxf.halign = 4  # 4=Middle
+                        text.dxf.valign = 2  # 2=Middle
+            
+            # DXFファイルを保存
+            doc.saveas(file_path)
+            logger.info(f"DXFファイルを保存しました: {file_path}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"DXF出力エラー: {str(e)}")
+            return False 
