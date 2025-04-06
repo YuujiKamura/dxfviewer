@@ -659,6 +659,12 @@ class TriangleManagerWindow(QMainWindow):
         self.triangle_combo.setMinimumWidth(100)
         self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
         self.triangle_combo.currentIndexChanged.connect(self.on_triangle_selected)
+        
+        # フォントサイズを設定
+        font = self.triangle_combo.font()
+        font.setPointSize(15)  # UIConstants.INPUT_FONT_SIZEの値
+        self.triangle_combo.setFont(font)
+        
         triangle_select_layout.addWidget(self.triangle_combo)
         input_layout.addLayout(triangle_select_layout)
         
@@ -1204,10 +1210,9 @@ class TriangleManagerWindow(QMainWindow):
             QMessageBox.warning(self, "選択エラー", "三角形が選択されていません")
             return False
         
-        # 辺選択チェック
+        # 辺選択チェック（警告のみ表示し、処理は続行）
         if self.selected_side_index < 0:
-            QMessageBox.warning(self, "選択エラー", "三角形の辺が選択されていません")
-            return False
+            QMessageBox.information(self, "注意", "三角形の辺が選択されていませんが、三角形全体の更新を行います")
         
         # 三角形を取得
         triangle = self.get_triangle_by_number(self.selected_parent_number)
