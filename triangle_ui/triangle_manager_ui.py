@@ -27,7 +27,9 @@ sys.path.append(str(parent_dir))
 
 # 三角形関連モジュールをインポート
 from ui.graphics_view import DxfGraphicsView
-from .triangle_data import TriangleData, TriangleManager, TriangleExporter
+from .triangle_data import TriangleData, TriangleManager
+from .triangle_exporters import DxfExporter
+from .triangle_io import JsonIO
 from .triangle_graphics_item import TriangleItem, add_triangle_item_to_scene
 
 # ロガー設定
@@ -235,6 +237,21 @@ class TriangleManagerWindow(QMainWindow):
         
         input_layout.addLayout(buttons_layout)
         
+        # JSON保存/読み込みボタンを追加
+        json_buttons_layout = QHBoxLayout()
+        
+        # JSON保存ボタン
+        self.save_json_button = QPushButton("JSON保存")
+        self.save_json_button.clicked.connect(self.on_save_json)
+        json_buttons_layout.addWidget(self.save_json_button)
+        
+        # JSON読み込みボタン
+        self.load_json_button = QPushButton("JSON読み込み")
+        self.load_json_button.clicked.connect(self.on_load_json)
+        json_buttons_layout.addWidget(self.load_json_button)
+        
+        input_layout.addLayout(json_buttons_layout)
+        
         layout.addWidget(input_group)
         
         return panel
@@ -350,11 +367,92 @@ class TriangleManagerWindow(QMainWindow):
             return  # ユーザーがキャンセルした場合
         
         # DXF出力
-        if TriangleExporter.export_to_dxf(self.triangle_manager.triangle_list, file_path):
+        if DxfExporter.export(self.triangle_manager.triangle_list, file_path):
             self.statusBar().showMessage(f"DXFファイルを保存しました: {file_path}")
             QMessageBox.information(self, "DXF出力", f"三角形データをDXFファイルに出力しました。\n{file_path}")
         else:
             QMessageBox.critical(self, "DXF出力エラー", "DXFファイルの出力中にエラーが発生しました。")
+    
+    def on_save_json(self):
+        """JSON保存ボタンがクリックされたとき"""
+        # 保存ファイル名を取得
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "JSONファイルを保存", "", "JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセルした場合
+        
+        # JSON出力
+        if JsonIO.save_to_json(self.triangle_manager.triangle_list, file_path):
+            self.statusBar().showMessage(f"JSONファイルを保存しました: {file_path}")
+            QMessageBox.information(self, "JSON保存", f"三角形データをJSONファイルに保存しました。\n{file_path}")
+        else:
+            QMessageBox.critical(self, "JSON保存エラー", "JSONファイルの保存中にエラーが発生しました。")
+    
+    def on_load_json(self):
+        """JSON読み込みボタンがクリックされたとき"""
+        # 開くファイル名を取得
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "JSONファイルを開く", "", "JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセルした場合
+        
+        # 確認ダイアログを表示
+        reply = QMessageBox.question(
+            self,
+            "確認",
+            "現在の三角形データは削除されます。よろしいですか？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.No:
+            return
+        
+        # JSON読み込み
+        triangles = JsonIO.load_from_json(file_path, TriangleData)
+        
+        if not triangles:
+            QMessageBox.critical(self, "JSON読み込みエラー", "JSONファイルからデータを読み込めませんでした。")
+            return
+        
+        # 現在のシーンをクリア
+        self.view.scene().clear()
+        
+        # 三角形マネージャーを初期化
+        self.triangle_manager = TriangleManager()
+        
+        # 読み込んだ三角形を追加
+        for triangle in triangles:
+            self.triangle_manager.add_triangle(triangle)
+            
+            # シーンに表示
+            triangle_item = add_triangle_item_to_scene(
+                self.view.scene(), 
+                triangle, 
+                self.dimension_font_size
+            )
+            
+            # 辺クリックシグナルの接続
+            triangle_item.signalHelper.sideClicked.connect(self.handle_side_clicked)
+        
+        # 三角形カウンターを更新
+        self.triangle_manager.update_triangle_counter()
+        
+        # 三角形選択コンボボックスを更新
+        self.update_triangle_combo()
+        
+        # ビューを全体表示に合わせる
+        self.view.fit_scene_in_view()
+        
+        # 選択をクリア
+        self.clear_selection()
+        
+        self.statusBar().showMessage(f"{len(triangles)}個の三角形データを{file_path}から読み込みました")
+        QMessageBox.information(self, "JSON読み込み", f"{len(triangles)}個の三角形データを読み込みました。")
     
     def refresh_scene(self):
         """シーンを再描画する"""
