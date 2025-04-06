@@ -609,6 +609,9 @@ class TriangleManagerWindow(QMainWindow):
         
         # 最初の三角形を作成
         self.reset_all()
+        
+        # 三角形選択コンボボックスを更新
+        self.update_triangle_combo()
     
     def create_control_panel(self):
         """コントロールパネルを作成"""
@@ -648,6 +651,16 @@ class TriangleManagerWindow(QMainWindow):
         # 入力部分
         input_group = QWidget()
         input_layout = QVBoxLayout(input_group)
+        
+        # 三角形選択コンボボックス
+        triangle_select_layout = QHBoxLayout()
+        triangle_select_layout.addWidget(QLabel("三角形選択:"))
+        self.triangle_combo = QComboBox()
+        self.triangle_combo.setMinimumWidth(100)
+        self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
+        self.triangle_combo.currentIndexChanged.connect(self.on_triangle_selected)
+        triangle_select_layout.addWidget(self.triangle_combo)
+        input_layout.addLayout(triangle_select_layout)
         
         # 辺の長さ入力 - 3つの入力欄を並べるように変更
         lengths_layout = QHBoxLayout()
@@ -723,6 +736,12 @@ class TriangleManagerWindow(QMainWindow):
         self.selected_side_index = -1
         self.next_triangle_number = 1  # 三角形番号をリセット
         
+        # コンボボックスをクリア
+        self.triangle_combo.blockSignals(True)
+        self.triangle_combo.clear()
+        self.triangle_combo.addItem("---", -1)
+        self.triangle_combo.blockSignals(False)
+        
         # ビューのクリア
         self.view.clear_scene()
         
@@ -747,6 +766,9 @@ class TriangleManagerWindow(QMainWindow):
         # 次の三角形番号を更新（update_triangle_counter の代わりに直接更新）
         if triangle_data.number >= self.next_triangle_number:
             self.next_triangle_number = triangle_data.number + 1
+        
+        # コンボボックスに追加
+        self.update_triangle_combo()
         
         # シーンアイテムの作成
         triangle_item = TriangleItem(triangle_data)
@@ -1178,7 +1200,12 @@ class TriangleManagerWindow(QMainWindow):
     def update_selected_triangle(self):
         """選択された三角形の寸法を更新し、子三角形の座標も再計算する"""
         # 選択チェック
-        if self.selected_parent_number < 0 or self.selected_side_index < 0:
+        if self.selected_parent_number < 0:
+            QMessageBox.warning(self, "選択エラー", "三角形が選択されていません")
+            return False
+        
+        # 辺選択チェック
+        if self.selected_side_index < 0:
             QMessageBox.warning(self, "選択エラー", "三角形の辺が選択されていません")
             return False
         
@@ -1418,12 +1445,22 @@ class TriangleManagerWindow(QMainWindow):
         for item in self.view.scene().items():
             if isinstance(item, TriangleItem):
                 item.highlight_selected_side(None)
+                item.setOpacity(1.0)  # 透明度をリセット
+                pen = item.pen()
+                pen.setWidth(1)  # 線の太さをリセット
+                pen.setColor(item.triangle_data.color)  # 色をリセット
+                item.setPen(pen)
         
         # 内部の選択状態もリセット
         self.selected_parent_number = -1
         self.selected_side_index = -1
         self.selected_info_label.setText("なし")
         self.update_triangle_button.setEnabled(False)
+        
+        # コンボボックスの選択をリセット
+        self.triangle_combo.blockSignals(True)
+        self.triangle_combo.setCurrentIndex(0)  # "---" を選択
+        self.triangle_combo.blockSignals(False)
         
         # ステータスバーをクリア
         self.statusBar().showMessage("選択をクリアしました")
@@ -1516,6 +1553,81 @@ class TriangleManagerWindow(QMainWindow):
                     return i
         
         return None
+
+    def on_triangle_selected(self, index):
+        """コンボボックスから三角形が選択されたときの処理"""
+        # 選択された三角形番号を取得
+        triangle_number = self.triangle_combo.currentData()
+        
+        # 無効な選択の場合は何もしない
+        if triangle_number == -1:
+            return
+        
+        # 三角形を取得
+        triangle = self.get_triangle_by_number(triangle_number)
+        if not triangle:
+            return
+        
+        # 選択情報を更新（辺は選択されていない状態）
+        self.selected_parent_number = triangle_number
+        self.selected_side_index = -1  # 辺は選択されていない
+        
+        # 三角形の情報をフォームに反映
+        self.new_len_a_input.setText(f"{triangle.lengths[0]:.1f}")
+        self.new_len_b_input.setText(f"{triangle.lengths[1]:.1f}")
+        self.new_len_c_input.setText(f"{triangle.lengths[2]:.1f}")
+        
+        # 選択情報を表示
+        self.selected_info_label.setText(f"三角形 {triangle_number}")
+        
+        # 更新ボタンを有効化
+        self.update_triangle_button.setEnabled(True)
+        
+        # シーン内の三角形を選択状態にする（辺は選択されない）
+        for item in self.view.scene().items():
+            if isinstance(item, TriangleItem):
+                if item.triangle_data.number == triangle_number:
+                    # 選択された三角形を強調表示（辺は選択しない）
+                    item.setOpacity(1.0)
+                    pen = item.pen()
+                    pen.setWidth(2)
+                    pen.setColor(QColor(255, 0, 0))  # 赤色で強調
+                    item.setPen(pen)
+                else:
+                    # 他の三角形は通常表示
+                    item.setOpacity(0.7)
+                    pen = item.pen()
+                    pen.setWidth(1)
+                    pen.setColor(item.triangle_data.color)
+                    item.setPen(pen)
+        
+        # 詳細情報をステータスバーに表示
+        self.statusBar().showMessage(f"三角形 {triangle_number} を選択しました（辺は選択されていません）")
+
+    def update_triangle_combo(self):
+        """三角形選択コンボボックスを更新"""
+        # 現在の選択を保存
+        current_selection = self.triangle_combo.currentData()
+        
+        # コンボボックスをクリア
+        self.triangle_combo.blockSignals(True)  # シグナルを一時停止
+        self.triangle_combo.clear()
+        self.triangle_combo.addItem("---", -1)  # デフォルト選択なし
+        
+        # 三角形リストを反復処理
+        for triangle in sorted(self.triangle_list, key=lambda t: t.number):
+            if triangle.number > 0:  # 有効な三角形番号のみ
+                self.triangle_combo.addItem(f"三角形 {triangle.number}", triangle.number)
+        
+        # 前の選択を復元（可能な場合）
+        if current_selection != -1:
+            index = self.triangle_combo.findData(current_selection)
+            if index >= 0:
+                self.triangle_combo.setCurrentIndex(index)
+            else:
+                self.triangle_combo.setCurrentIndex(0)  # デフォルト選択
+        
+        self.triangle_combo.blockSignals(False)  # シグナルを再開
 
 def main():
     """メイン関数"""
