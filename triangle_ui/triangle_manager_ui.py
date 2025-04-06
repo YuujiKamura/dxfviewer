@@ -144,13 +144,8 @@ class TriangleManagerWindow(QMainWindow):
     
     def connect_control_signals(self):
         """コントロールパネルのシグナルを接続"""
-        signals = self.control_panel.signals
-        signals.triangleSelected.connect(self.on_triangle_selected)
-        signals.addTriangleClicked.connect(self.on_add_triangle)
-        signals.updateTriangleClicked.connect(self.on_update_triangle)
-        signals.exportDxfClicked.connect(self.on_export_dxf)
-        signals.saveJsonClicked.connect(self.on_save_json)
-        signals.loadJsonClicked.connect(self.on_load_json)
+        # 自動シグナルマッピングを使用
+        self.control_panel.connect_signals_to_handlers(self)
     
     def add_triangle(self, triangle_data):
         """三角形を追加してUIに表示"""

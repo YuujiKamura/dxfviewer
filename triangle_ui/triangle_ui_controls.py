@@ -8,6 +8,7 @@ TriangleControlPanel - 三角形UIのコントロールパネル
 """
 
 import logging
+import re
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QSizePolicy, QFrame
@@ -181,6 +182,40 @@ class TriangleControlPanel(QWidget):
         input_layout.addLayout(json_buttons_layout)
         
         layout.addWidget(input_group)
+    
+    def connect_signals_to_handlers(self, handler_object):
+        """シグナルをハンドラーに自動接続する
+        
+        シグナル名からハンドラー名を自動生成して接続します。
+        例: addTriangleClicked → on_add_triangle
+             triangleSelected → on_triangle_selected
+        """
+        signals = self.signals
+        
+        # シグナル名とハンドラー名のマッピング
+        signal_handler_map = {
+            'addTriangleClicked': 'on_add_triangle',
+            'updateTriangleClicked': 'on_update_triangle',
+            'exportDxfClicked': 'on_export_dxf',
+            'saveJsonClicked': 'on_save_json',
+            'loadJsonClicked': 'on_load_json',
+            'triangleSelected': 'on_triangle_selected'
+        }
+        
+        # シグナル名に基づいて自動的にハンドラーを見つけて接続
+        for signal_name in dir(signals):
+            # シグナルオブジェクトのみを処理（アンダースコアで始まる属性は除外）
+            if not signal_name.startswith('_') and isinstance(getattr(signals, signal_name), Signal):
+                # マッピングからハンドラー名を取得
+                if signal_name in signal_handler_map:
+                    handler_name = signal_handler_map[signal_name]
+                    
+                    if hasattr(handler_object, handler_name):
+                        # ハンドラーが存在する場合は接続
+                        logger.debug(f"シグナル {signal_name} を {handler_name} に接続します")
+                        getattr(signals, signal_name).connect(getattr(handler_object, handler_name))
+                    else:
+                        logger.warning(f"ハンドラー {handler_name} が見つかりません")
     
     def _on_triangle_selected(self, index):
         """コンボボックスで三角形が選択されたときの内部処理"""
