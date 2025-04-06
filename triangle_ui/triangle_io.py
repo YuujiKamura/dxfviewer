@@ -11,6 +11,8 @@ import json
 import logging
 from pathlib import Path
 from PySide6.QtCore import QPointF
+from PySide6.QtGui import QColor
+from shapes.geometry.triangle_shape import TriangleData
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -115,7 +117,6 @@ class JsonIO:
                 # 色情報を復元
                 if 'color' in triangle_dict:
                     color_dict = triangle_dict['color']
-                    from PySide6.QtGui import QColor
                     triangle.color = QColor(
                         color_dict['r'],
                         color_dict['g'],

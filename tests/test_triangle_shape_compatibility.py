@@ -12,8 +12,7 @@ import math
 from PySide6.QtCore import QPointF
 
 # テスト対象のクラスをインポート
-from triangle_ui.triangle_data import TriangleData
-from shapes.geometry.triangle_shape import TriangleData as TriangleShape
+from shapes.geometry.triangle_shape import TriangleData, TriangleManager
 
 class TestShapeEquivalence(unittest.TestCase):
     """TriangleShapeとTriangleDataの等価性テスト"""
@@ -33,7 +32,7 @@ class TestShapeEquivalence(unittest.TestCase):
             self.number
         )
         
-        self.ts = TriangleShape(
+        self.ts = TriangleData(
             self.a, self.b, self.c, 
             self.p_ca, 
             self.angle, 
@@ -133,7 +132,7 @@ class TestMethodCompatibility(unittest.TestCase):
         """is_valid_lengthsメソッドの互換性テスト"""
         # 正三角形
         td = TriangleData(100, 100, 100)
-        ts = TriangleShape(100, 100, 100)
+        ts = TriangleData(100, 100, 100)
         
         # 両クラスとも同じ結果を返すことを確認
         self.assertEqual(td.is_valid_lengths(), ts.is_valid_lengths())
@@ -143,7 +142,7 @@ class TestMethodCompatibility(unittest.TestCase):
     def test_get_side_line(self):
         """get_side_lineメソッドの互換性テスト"""
         td = TriangleData(100, 100, 100)
-        ts = TriangleShape(100, 100, 100)
+        ts = TriangleData(100, 100, 100)
         
         # 有効な辺インデックス
         for i in range(3):
@@ -161,7 +160,7 @@ class TestMethodCompatibility(unittest.TestCase):
     def test_update_with_new_lengths(self):
         """update_with_new_lengthsメソッドの互換性テスト"""
         td = TriangleData(100, 100, 100)
-        ts = TriangleShape(100, 100, 100)
+        ts = TriangleData(100, 100, 100)
         
         # 有効な辺の長さ
         new_lengths = [120.0, 120.0, 120.0]
@@ -178,8 +177,8 @@ class TestMethodCompatibility(unittest.TestCase):
         td_parent = TriangleData(100, 100, 100, QPointF(0, 0), 0, 1)
         td_child = TriangleData(80, 80, 80, QPointF(100, 0), 180, 2)
         
-        ts_parent = TriangleShape(100, 100, 100, QPointF(0, 0), 0, 1)
-        ts_child = TriangleShape(80, 80, 80, QPointF(100, 0), 180, 2)
+        ts_parent = TriangleData(100, 100, 100, QPointF(0, 0), 0, 1)
+        ts_child = TriangleData(80, 80, 80, QPointF(100, 0), 180, 2)
         
         # 親子関係を設定
         td_parent.set_child(td_child, 0)

@@ -23,7 +23,7 @@ sys.path.insert(0, parent_dir)
 from PySide6.QtCore import QPointF
 
 # TriangleDataクラスのインポート
-from triangle_ui.triangle_manager import TriangleData
+from shapes.geometry.triangle_shape import TriangleData
 
 # ロガーのセットアップ
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s')

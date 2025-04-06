@@ -10,6 +10,7 @@ TriangleExporters - 三角形データのDXFエクスポート機能
 import logging
 from pathlib import Path
 import math
+from shapes.geometry.triangle_shape import TriangleData
 
 # DXF出力用にezdxfをインポート
 try:

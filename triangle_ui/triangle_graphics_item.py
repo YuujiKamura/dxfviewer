@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPen, QColor
 from PySide6.QtCore import Qt, QPointF, Signal, QObject
 
+# 新しいTriangleDataクラスをインポート
+from shapes.geometry.triangle_shape import TriangleData
+
 # ラベル関連ユーティリティをインポート
 from .triangle_labels import (
     create_vertex_labels,
